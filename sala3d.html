@@ -269,15 +269,21 @@ document.getElementById("chat-input").addEventListener("keydown", e => {
 
 // ══════════════════════════════════════
 // WebRTC — com papéis claros
-// caller = quem partilha o ecrã
-// callee = quem recebe
+// uma partilha ativa por sala
 // ══════════════════════════════════════
-let localStream = null;
+let localDisplayStream = null;
+let localMicStream = null;
+let localSendStream = null;
+let localAudioContext = null;
+let localAudioDestination = null;
 let pc          = null;
-let myRole      = null; // "caller" ou "callee"
+let myRole      = null; // "sharer" ou "viewer"
 let signalUnsubs = [];
 let remoteStream = null;
-let localAudioEnabled = false;
+let localAudioFlags = { system: false, mic: false };
+let localSessionId = null;
+let viewingSessionId = null;
+let activeSessionMeta = null;
 
 // ID único por tab — resolve conflito de dois tabs no mesmo browser
 const tabId = Math.random().toString(36).substring(2, 10);
@@ -289,20 +295,26 @@ const rtcCfg = { iceServers: [
 ]};
 
 const webrtcBase = `salas/${salaId}/webrtc`;
+const activeSessionRef = ref(db, `${webrtcBase}/activeSession`);
 
 function setStatus(msg) {
   document.getElementById("ss-status").textContent = msg;
   console.log("[screenshare]", msg);
 }
 
-function updateAudioStatus() {
-  const suffix = localAudioEnabled
-    ? " · áudio do sistema ativo"
-    : " · sem áudio do sistema";
-  const current = document.getElementById("ss-status").textContent;
-  if (current && !current.includes("áudio do sistema") && !current.includes("sem áudio")) {
-    document.getElementById("ss-status").textContent = `${current}${suffix}`;
-  }
+function makeSessionId() {
+  return `ss_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function sessionRef(sessionId, path = "") {
+  return ref(db, `${webrtcBase}/sessions/${sessionId}${path ? `/${path}` : ""}`);
+}
+
+function describeAudio(flags) {
+  if (flags?.system && flags?.mic) return "áudio do sistema + microfone";
+  if (flags?.system) return "áudio do sistema";
+  if (flags?.mic) return "microfone";
+  return "sem áudio";
 }
 
 function detachSignalListeners() {
@@ -341,6 +353,18 @@ function cleanupPeer({ clearRemote = false } = {}) {
   }
 }
 
+function clearLocalAudioGraph() {
+  localAudioDestination = null;
+  if (localAudioContext) {
+    localAudioContext.close().catch(() => {});
+    localAudioContext = null;
+  }
+}
+
+function stopStream(stream) {
+  stream?.getTracks().forEach(track => track.stop());
+}
+
 async function getDisplayStream() {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("Partilha de ecrã não suportada neste browser");
@@ -368,6 +392,62 @@ async function getDisplayStream() {
   }
 }
 
+async function getMicStream() {
+  if (!navigator.mediaDevices?.getUserMedia) return null;
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function buildOutgoingStream(displayStream, micStream) {
+  const outgoing = new MediaStream();
+  displayStream.getVideoTracks().forEach(track => outgoing.addTrack(track));
+
+  const flags = {
+    system: displayStream.getAudioTracks().length > 0,
+    mic: micStream ? micStream.getAudioTracks().length > 0 : false,
+  };
+
+  if (!flags.system && !flags.mic) {
+    return { stream: outgoing, flags };
+  }
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    if (flags.system) displayStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
+    else if (flags.mic) micStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
+    return { stream: outgoing, flags };
+  }
+
+  localAudioContext = new AudioCtx();
+  if (localAudioContext.state === "suspended") {
+    await localAudioContext.resume().catch(() => {});
+  }
+  localAudioDestination = localAudioContext.createMediaStreamDestination();
+
+  if (flags.system) {
+    const systemSource = localAudioContext.createMediaStreamSource(new MediaStream(displayStream.getAudioTracks()));
+    systemSource.connect(localAudioDestination);
+  }
+
+  if (flags.mic) {
+    const micSource = localAudioContext.createMediaStreamSource(new MediaStream(micStream.getAudioTracks()));
+    micSource.connect(localAudioDestination);
+  }
+
+  const mixedTrack = localAudioDestination.stream.getAudioTracks()[0];
+  if (mixedTrack) outgoing.addTrack(mixedTrack);
+
+  return { stream: outgoing, flags };
+}
+
 function aplicarVideoNaTela(videoEl) {
   videoEl.muted = true;
   videoEl.play().then(() => {
@@ -393,56 +473,146 @@ function aplicarAudioRemoto(stream) {
   });
 }
 
-// ── CALLER: partilhar ecrã ──
-window.iniciarPartilha = async () => {
-  if (myRole === "caller" && localStream) {
-    setStatus("📡 Já estás a transmitir");
-    return;
+async function stopSharingSession({ releaseClaim = true, reason = "Sem partilha ativa" } = {}) {
+  const previousSessionId = localSessionId;
+
+  stopStream(localDisplayStream);
+  stopStream(localMicStream);
+  stopStream(localSendStream);
+  localDisplayStream = null;
+  localMicStream = null;
+  localSendStream = null;
+  clearLocalAudioGraph();
+
+  cleanupPeer({ clearRemote: true });
+  myRole = null;
+  localAudioFlags = { system: false, mic: false };
+  localSessionId = null;
+  document.getElementById("btn-partilhar").classList.remove("active");
+
+  if (releaseClaim && previousSessionId && activeSessionMeta?.id === previousSessionId && activeSessionMeta?.owner === username) {
+    await remove(sessionRef(previousSessionId));
+    await remove(activeSessionRef);
   }
 
-  // Limpar sessão anterior
-  cleanupPeer({ clearRemote: false });
-  await remove(ref(db, webrtcBase));
-  await new Promise(r => setTimeout(r, 200));
+  setStatus(reason);
+}
 
-  // Soltar rato
-  if (document.pointerLockElement) document.exitPointerLock();
-  await new Promise(r => setTimeout(r, 150));
+async function startViewerForSession(meta) {
+  if (!meta?.id || meta.owner === username) return;
+  if (viewingSessionId === meta.id && myRole === "viewer" && pc) return;
 
-  try {
-    localStream = await getDisplayStream();
-  } catch(e) {
-    setStatus("❌ " + e.message); return;
-  }
-
-  localAudioEnabled = localStream.getAudioTracks().length > 0;
-
-  myRole = "caller";
-  document.getElementById("btn-partilhar").classList.add("active");
-  setStatus("📡 A iniciar transmissão...");
-
-  const localPreviewVideo = document.getElementById("remote-video-hidden");
-  localPreviewVideo.srcObject = localStream;
-  aplicarVideoNaTela(localPreviewVideo);
-  setStatus("📡 Ecrã capturado. A ligar à sala...");
-  updateAudioStatus();
-
-  localStream.getVideoTracks()[0]?.addEventListener("ended", () => {
-    window.pararPartilha();
-  }, { once: true });
+  cleanupPeer({ clearRemote: true });
+  viewingSessionId = meta.id;
+  myRole = "viewer";
+  document.getElementById("btn-partilhar").classList.remove("active");
+  setStatus(`📡 A ligar à partilha de ${meta.owner}...`);
 
   pc = new RTCPeerConnection(rtcCfg);
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
-  // Envia ICE candidates
-  pc.onicecandidate = e => {
+  pc.ontrack = (e) => {
+    const vid = document.getElementById("remote-video-hidden");
+    remoteStream = e.streams[0];
+    vid.srcObject = remoteStream;
+    aplicarVideoNaTela(vid);
+    aplicarAudioRemoto(remoteStream);
+    const remoteHasAudio = remoteStream.getAudioTracks().length > 0;
+    setStatus(`✅ A ver ${meta.owner}${remoteHasAudio ? " com áudio" : " sem áudio"}`);
+  };
+
+  pc.onicecandidate = (e) => {
     if (e.candidate) {
-      push(ref(db, `${webrtcBase}/caller_ice`), JSON.stringify(e.candidate));
+      push(sessionRef(meta.id, "viewer_ice"), JSON.stringify(e.candidate));
     }
   };
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "connected") setStatus("✅ Ligado!");
+    if (!pc) return;
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      setStatus("❌ Ligação perdida");
+      cleanupPeer({ clearRemote: true });
+      myRole = null;
+      viewingSessionId = null;
+    }
+  };
+
+  signalUnsubs.push(onValue(sessionRef(meta.id, "offer"), async (snap) => {
+    if (!snap.val() || !pc || pc.remoteDescription || activeSessionMeta?.id !== meta.id) return;
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(snap.val())));
+      setStatus("📡 Offer recebida. A preparar resposta...");
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await set(sessionRef(meta.id, "answer"), JSON.stringify(answer));
+      setStatus(`📡 Ligado a ${meta.owner} · ${describeAudio(meta.audioFlags)}`);
+    } catch (error) {
+      setStatus("❌ Erro: " + error.message);
+      cleanupPeer({ clearRemote: true });
+      myRole = null;
+      viewingSessionId = null;
+    }
+  }));
+
+  signalUnsubs.push(onValue(sessionRef(meta.id, "caller_ice"), async (snap) => {
+    if (!snap.val() || !pc || activeSessionMeta?.id !== meta.id) return;
+    for (const value of Object.values(snap.val())) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(value)));
+      } catch {}
+    }
+  }));
+}
+
+// ── SHARER: partilhar ecrã ──
+window.iniciarPartilha = async () => {
+  if (myRole === "sharer" && localDisplayStream) {
+    setStatus("📡 Já estás a transmitir");
+    return;
+  }
+
+  if (document.pointerLockElement) document.exitPointerLock();
+  await new Promise(r => setTimeout(r, 150));
+
+  try {
+    localDisplayStream = await getDisplayStream();
+  } catch (error) {
+    setStatus("❌ " + error.message);
+    return;
+  }
+
+  localMicStream = await getMicStream();
+  const { stream, flags } = await buildOutgoingStream(localDisplayStream, localMicStream);
+  localSendStream = stream;
+  localAudioFlags = flags;
+
+  const sessionId = makeSessionId();
+  localSessionId = sessionId;
+  viewingSessionId = null;
+  myRole = "sharer";
+  cleanupPeer({ clearRemote: false });
+  document.getElementById("btn-partilhar").classList.add("active");
+
+  const localPreviewVideo = document.getElementById("remote-video-hidden");
+  localPreviewVideo.srcObject = localDisplayStream;
+  aplicarVideoNaTela(localPreviewVideo);
+  setStatus(`📡 Ecrã capturado · ${describeAudio(flags)}`);
+
+  localDisplayStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+    if (localSessionId === sessionId) window.pararPartilha();
+  }, { once: true });
+
+  pc = new RTCPeerConnection(rtcCfg);
+  localSendStream.getTracks().forEach(track => pc.addTrack(track, localSendStream));
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate && localSessionId === sessionId) {
+      push(sessionRef(sessionId, "caller_ice"), JSON.stringify(e.candidate));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (!pc || localSessionId !== sessionId) return;
+    if (pc.connectionState === "connected") setStatus(`✅ A transmitir · ${describeAudio(flags)}`);
     if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
       setStatus("❌ Ligação perdida");
       cleanupPeer({ clearRemote: false });
@@ -450,105 +620,80 @@ window.iniciarPartilha = async () => {
     }
   };
 
-  // Cria offer
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  // Regista este tab como o caller
-  await set(ref(db, `${webrtcBase}/callerId`), tabId);
-  await set(ref(db, `${webrtcBase}/offer`), JSON.stringify(offer));
-  setStatus("📡 Offer enviada. À espera de resposta...");
-
-  // Ouve answer do callee
-  signalUnsubs.push(onValue(ref(db, `${webrtcBase}/answer`), async snap => {
-    if (!snap.val() || !pc || pc.remoteDescription) return;
+  signalUnsubs.push(onValue(sessionRef(sessionId, "answer"), async (snap) => {
+    if (!snap.val() || !pc || pc.remoteDescription || localSessionId !== sessionId) return;
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(snap.val())));
-    } catch(e) {
+      setStatus(`✅ Viewer ligado · ${describeAudio(flags)}`);
+    } catch {
       setStatus("❌ Erro a receber resposta");
     }
   }));
 
-  // Ouve ICE candidates do callee
-  signalUnsubs.push(onValue(ref(db, `${webrtcBase}/callee_ice`), async snap => {
-    if (!snap.val() || !pc) return;
-    for (const v of Object.values(snap.val())) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(v))); } catch(e) {}
+  signalUnsubs.push(onValue(sessionRef(sessionId, "viewer_ice"), async (snap) => {
+    if (!snap.val() || !pc || localSessionId !== sessionId) return;
+    for (const value of Object.values(snap.val())) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(value)));
+      } catch {}
     }
   }));
-};
 
-// ── CALLEE: receber ecrã ──
-// Ouve offer — mas só responde se não for o caller
-onValue(ref(db, `${webrtcBase}/offer`), async snap => {
-  if (!snap.val()) return;
-  if (myRole === "caller") return; // Ignora se eu sou o caller
-  if (pc) return; // Já ligado
-
-  // Verifica se este tab é o caller (pelo tabId guardado no Firebase)
-  const callerSnap = await get(ref(db, `${webrtcBase}/callerId`));
-  if (callerSnap.val() === tabId) return; // Sou o caller, ignoro
-
-  myRole = "callee";
-  setStatus("📡 A receber ecrã...");
-
-  pc = new RTCPeerConnection(rtcCfg);
-
-  pc.ontrack = e => {
-    const vid = document.getElementById("remote-video-hidden");
-    remoteStream = e.streams[0];
-    vid.srcObject = remoteStream;
-    aplicarVideoNaTela(vid);
-    aplicarAudioRemoto(remoteStream);
-    const remoteHasAudio = remoteStream.getAudioTracks().length > 0;
-    setStatus(`✅ A ver ecrã remoto${remoteHasAudio ? " com áudio" : " sem áudio"}`);
-  };
-
-  pc.onicecandidate = e => {
-    if (e.candidate) {
-      push(ref(db, `${webrtcBase}/callee_ice`), JSON.stringify(e.candidate));
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-      setStatus("❌ Ligação perdida");
-      cleanupPeer({ clearRemote: true });
-      myRole = null;
-    }
-  };
-
-  try {
-    await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(snap.val())));
-    setStatus("📡 Offer recebida. A preparar resposta...");
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await set(ref(db, `${webrtcBase}/answer`), JSON.stringify(answer));
-    setStatus("📡 Resposta enviada. A ligar...");
-
-    // Ouve ICE do caller
-    signalUnsubs.push(onValue(ref(db, `${webrtcBase}/caller_ice`), async snap2 => {
-      if (!snap2.val() || !pc) return;
-      for (const v of Object.values(snap2.val())) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(v))); } catch(e) {}
-      }
-    }));
-  } catch(e) {
-    setStatus("❌ Erro: " + e.message);
-    cleanupPeer({ clearRemote: true });
-    myRole = null;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  if (activeSessionMeta?.id && activeSessionMeta.id !== sessionId) {
+    await remove(sessionRef(activeSessionMeta.id));
   }
-});
+  await set(sessionRef(sessionId), {
+    owner: username,
+    ownerTabId: tabId,
+    audioFlags: flags,
+    offer: JSON.stringify(offer),
+    createdAt: Date.now(),
+  });
+  await set(activeSessionRef, {
+    id: sessionId,
+    owner: username,
+    ownerTabId: tabId,
+    audioFlags: flags,
+    startedAt: Date.now(),
+  });
+  setStatus(`📡 Partilha ativa · ${describeAudio(flags)}`);
+};
 
 window.pararPartilha = async () => {
-  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-  cleanupPeer({ clearRemote: true });
-  myRole = null;
-  localAudioEnabled = false;
-  document.getElementById("btn-partilhar").classList.remove("active");
-  setStatus("Sem partilha ativa");
-  await remove(ref(db, webrtcBase));
-  resetScreenTexture();
+  await stopSharingSession({ releaseClaim: true, reason: "Sem partilha ativa" });
 };
+
+onValue(activeSessionRef, async (snap) => {
+  const next = snap.val();
+  const previousId = activeSessionMeta?.id;
+  activeSessionMeta = next;
+
+  if (!next) {
+    if (myRole === "viewer" || viewingSessionId) {
+      cleanupPeer({ clearRemote: true });
+      myRole = null;
+      viewingSessionId = null;
+      setStatus("Sem partilha ativa");
+    }
+    return;
+  }
+
+  if (next.id === localSessionId) return;
+
+  if (myRole === "sharer" && localSessionId && next.id !== localSessionId) {
+    await stopSharingSession({
+      releaseClaim: false,
+      reason: `📡 ${next.owner} assumiu a tela`,
+    });
+  }
+
+  if (next.owner === username) return;
+  if (previousId !== next.id || viewingSessionId !== next.id || myRole !== "viewer") {
+    await startViewerForSession(next);
+  }
+});
 
 window.addEventListener("beforeunload", () => set(usersRef, { nome: username, online: false }));
 
