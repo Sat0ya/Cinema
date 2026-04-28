@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cinema Interativo</title>
+  <link rel="shortcut icon" type="image/png" href="Icons/PopCorn.png">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&amp;family=DM+Sans:wght@300;400;500&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #111118;
+      --surface2: #1a1a24;
+      --border:   rgba(255,255,255,0.07);
+      --gold:     #c9a84c;
+      --gold-dim: #7a6130;
+      --text:     #e8e4d8;
+      --text-muted: #7a7870;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Grain */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.4;
+    }
+
+    /* Luzes de fundo */
+    .bg-light {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+    }
+    .bg-light-1 {
+      width: 500px; height: 500px;
+      background: rgba(201,168,76,0.06);
+      top: -100px; left: -100px;
+    }
+    .bg-light-2 {
+      width: 400px; height: 400px;
+      background: rgba(80,60,140,0.07);
+      bottom: -100px; right: -100px;
+    }
+
+    /* Cortinas */
+    .curtain {
+      position: fixed;
+      top: 0; bottom: 0;
+      width: 120px;
+      background: linear-gradient(to right, rgba(60,10,10,0.5), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .curtain.right {
+      right: 0; left: auto;
+      background: linear-gradient(to left, rgba(60,10,10,0.5), transparent);
+    }
+
+    /* Card central */
+    .card {
+      position: relative;
+      z-index: 2;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 56px 52px;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-icon {
+      font-size: 48px;
+      margin-bottom: 24px;
+      display: block;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    .card h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: 0.02em;
+      margin-bottom: 6px;
+      animation: fadeUp 0.6s 0.15s ease both;
+    }
+
+    .card .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 40px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .divider {
+      width: 40px;
+      height: 1px;
+      background: var(--gold-dim);
+      margin: 0 auto 40px;
+      animation: fadeUp 0.6s 0.22s ease both;
+    }
+
+    .form-group {
+      animation: fadeUp 0.6s 0.25s ease both;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: left;
+      margin-bottom: 10px;
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      font-weight: 300;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+
+    .form-input:focus {
+      border-color: var(--gold-dim);
+      box-shadow: 0 0 0 3px rgba(201,168,76,0.08);
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+
+    /* Opção de sala */
+    .sala-toggle {
+      margin-top: 20px;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .sala-toggle label {
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: block;
+      text-align: left;
+      margin-bottom: 10px;
+    }
+
+    .sala-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .sala-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: 'DM Sans', monospace;
+      font-size: 14px;
+      outline: none;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      transition: border-color 0.2s;
+    }
+
+    .sala-row input:focus { border-color: var(--gold-dim); }
+    .sala-row input::placeholder { color: var(--text-muted); letter-spacing: 0.05em; text-transform: none; }
+
+    .btn-nova-sala {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-nova-sala:hover { border-color: var(--gold-dim); color: var(--gold); }
+
+    .btn-entrar {
+      display: block;
+      width: 100%;
+      margin-top: 32px;
+      background: var(--gold);
+      color: #0a0a0f;
+      border: none;
+      border-radius: 12px;
+      padding: 15px;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      animation: fadeUp 0.6s 0.35s ease both;
+    }
+
+    .btn-entrar:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn-entrar:active { transform: translateY(0); }
+
+    .room-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+      animation: fadeUp 0.6s 0.36s ease both;
+    }
+
+    .btn-secundario {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, transform 0.15s;
+    }
+
+    .btn-secundario:hover {
+      border-color: var(--gold-dim);
+      color: var(--gold);
+      transform: translateY(-1px);
+    }
+
+    .share-box {
+      margin-top: 22px;
+      padding: 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      text-align: left;
+      animation: fadeUp 0.6s 0.38s ease both;
+    }
+
+    .share-box[hidden] {
+      display: none;
+    }
+
+    .share-title {
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .share-link {
+      display: block;
+      width: 100%;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-all;
+      margin-bottom: 10px;
+    }
+
+    .share-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+      animation: fadeUp 0.6s 0.4s ease both;
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-light bg-light-1"></div>
+<div class="bg-light bg-light-2"></div>
+<div class="curtain left"></div>
+<div class="curtain right"></div>
+
+<div class="card">
+  <span class="card-icon">🎬</span>
+  <h1>Cinema</h1>
+  <p class="subtitle">Interativo</p>
+  <div class="divider"></div>
+
+  <div class="form-group">
+    <label class="form-label" for="nome">O teu nome</label>
+    <input class="form-input" type="text" id="nome" placeholder="Como te chamas?" maxlength="20" required />
+  </div>
+
+  <div class="sala-toggle">
+    <label for="sala">Código da sala (opcional)</label>
+    <div class="sala-row">
+      <input type="text" id="sala" placeholder="Deixa vazio para criar nova" maxlength="6" />
+      <button class="btn-nova-sala" onclick="novaSala()" title="Gerar código novo">🎲</button>
+    </div>
+  </div>
+
+  <button class="btn-entrar" onclick="entrar()">Entrar na Sala</button>
+  <div class="room-actions">
+    <button class="btn-secundario" onclick="entrarDireto('cinema.html')">Lounge 2D</button>
+    <button class="btn-secundario" onclick="entrarDireto('sala3d.html')">Cinema 3D</button>
+  </div>
+
+  <div class="share-box" id="share-box" hidden>
+    <div class="share-title">Convite rápido</div>
+    <div class="share-link" id="share-link">—</div>
+    <button class="btn-secundario" style="width:100%" onclick="copiarConvite()">Copiar link</button>
+    <p class="share-meta">Usa este link para mandar a sala pronta aos teus amigos.</p>
+  </div>
+
+  <p class="footer-note">Partilha o código da sala com o teu amigo para ver juntos</p>
+</div>
+
+<script type="module">
+  import {
+    buildRoomUrl,
+    copyText,
+    generateRoomCode,
+    sanitizeRoomCode,
+    sanitizeUsername,
+  } from "./js/cinema-shared.js";
+
+  const nomeInput = document.getElementById("nome");
+  const salaInput = document.getElementById("sala");
+  const shareBox = document.getElementById("share-box");
+  const shareLink = document.getElementById("share-link");
+  const params = new URLSearchParams(window.location.search);
+  const savedName = localStorage.getItem("cinema_username");
+  const savedRoom = localStorage.getItem("cinema_sala");
+  const invitedRoom = params.get("sala");
+  const invitedName = params.get("nome");
+
+  if (invitedName || savedName) nomeInput.value = sanitizeUsername(invitedName || savedName);
+  if (invitedRoom || savedRoom) {
+    salaInput.value = sanitizeRoomCode(invitedRoom || savedRoom);
+    atualizarConvite();
+  }
+
+  function validarSessao() {
+    const nome = sanitizeUsername(nomeInput.value);
+    const sala = sanitizeRoomCode(salaInput.value || generateRoomCode());
+
+    nomeInput.value = nome;
+    salaInput.value = sala;
+
+    if (!nome) {
+      nomeInput.focus();
+      nomeInput.style.borderColor = "#c0392b";
+      return null;
+    }
+
+    nomeInput.style.borderColor = "";
+    localStorage.setItem("cinema_username", nome);
+    localStorage.setItem("cinema_sala", sala);
+    return { nome, sala };
+  }
+
+  function atualizarConvite() {
+    const sala = sanitizeRoomCode(salaInput.value || savedRoom || generateRoomCode());
+    salaInput.value = sala;
+    const inviteUrl = new URL(`cinema.html?sala=${encodeURIComponent(sala)}`, window.location.href);
+    shareLink.textContent = inviteUrl.href;
+    shareBox.hidden = false;
+  }
+
+  window.novaSala = function novaSala() {
+    salaInput.value = generateRoomCode();
+    atualizarConvite();
+  };
+
+  window.entrar = function entrar() {
+    const session = validarSessao();
+    if (!session) return;
+    window.location.href = buildRoomUrl("cinema.html", session.nome, session.sala);
+  };
+
+  window.entrarDireto = function entrarDireto(page) {
+    const session = validarSessao();
+    if (!session) return;
+    window.location.href = buildRoomUrl(page, session.nome, session.sala);
+  };
+
+  window.copiarConvite = async function copiarConvite() {
+    atualizarConvite();
+    await copyText(shareLink.textContent);
+  };
+
+  nomeInput.addEventListener("input", atualizarConvite);
+  salaInput.addEventListener("input", atualizarConvite);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") window.entrar();
+  });
+</script>
+
+</body>
+</html>

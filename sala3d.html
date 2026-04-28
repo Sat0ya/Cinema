@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cinema 3D</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Playfair+Display:wght@700&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #000; overflow: hidden; font-family: "DM Mono", monospace; color: #e8e4d8; }
+    #canvas-container { position: fixed; inset: 0; }
+    canvas { display: block; }
+
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 16px; }
+    #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,0.5); border-radius: 2px; }
+    #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+    #crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+
+    #hud-info { position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; gap: 5px; }
+    .hud-badge { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 7px; padding: 5px 12px; font-size: 12px; letter-spacing: 0.06em; color: #c9a84c; }
+
+    #cursor-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.4); backdrop-filter: blur(8px); border-radius: 7px; padding: 6px 16px; font-size: 11px; letter-spacing: 0.1em; color: #c9a84c; cursor: pointer; pointer-events: all; transition: all 0.2s; user-select: none; }
+    #cursor-toggle:hover { background: rgba(201,168,76,0.15); }
+    #cursor-toggle.solto { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.35); }
+
+    #hud-controls { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px); border-radius: 9px; padding: 10px 14px; font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.9; letter-spacing: 0.05em; }
+    #hud-controls span { color: #c9a84c; }
+
+    #room-actions { position: absolute; top: 16px; right: 220px; display: flex; gap: 8px; pointer-events: all; }
+    .room-action-btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 999px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.7); cursor: pointer; letter-spacing: 0.06em; text-decoration: none; transition: all 0.2s; }
+    .room-action-btn:hover { border-color: rgba(201,168,76,0.45); color: #c9a84c; }
+
+    /* PAINEL ADMIN */
+    #admin-btn { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.3); backdrop-filter: blur(8px); border-radius: 7px; padding: 6px 18px; font-size: 11px; color: #c9a84c; cursor: pointer; pointer-events: all; letter-spacing: 0.1em; transition: all 0.2s; }
+    #admin-btn:hover { background: rgba(201,168,76,0.12); }
+
+    #admin-panel { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); background: rgba(8,8,14,0.92); border: 1px solid rgba(201,168,76,0.25); backdrop-filter: blur(16px); border-radius: 14px; padding: 20px 24px; width: 420px; display: none; pointer-events: all; }
+    #admin-panel.open { display: block; }
+    #admin-panel h3 { font-family: "Playfair Display", serif; color: #c9a84c; font-size: 15px; margin-bottom: 16px; letter-spacing: 0.06em; }
+
+    .admin-section { margin-bottom: 16px; }
+    .admin-label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.35); margin-bottom: 8px; }
+    .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .preset-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 7px 14px; font-family: "DM Mono", monospace; font-size: 12px; color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.2s; letter-spacing: 0.04em; }
+    .preset-btn:hover { border-color: rgba(201,168,76,0.5); color: #c9a84c; }
+    .preset-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.1); }
+
+    .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .slider-row label { font-size: 11px; color: rgba(255,255,255,0.4); width: 90px; letter-spacing: 0.04em; }
+    .slider-row input[type=range] { flex: 1; accent-color: #c9a84c; }
+    .slider-val { font-size: 11px; color: #c9a84c; width: 30px; text-align: right; }
+
+    /* SCREENSHARE */
+    #ss-panel { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 6px; pointer-events: all; }
+    .ss-btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 7px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.6); cursor: pointer; letter-spacing: 0.06em; transition: all 0.2s; }
+    .ss-btn:hover { border-color: rgba(201,168,76,0.4); color: #c9a84c; }
+    .ss-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.08); }
+    #ss-status { font-size: 11px; color: rgba(255,255,255,0.3); padding: 0 3px; letter-spacing: 0.05em; }
+
+    /* CHAT */
+    #chat-panel { position: absolute; bottom: 16px; right: 16px; width: 260px; pointer-events: all; }
+    #chat-messages { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.07); backdrop-filter: blur(8px); border-radius: 9px 9px 0 0; padding: 10px; height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
+    #chat-messages::-webkit-scrollbar { width: 2px; }
+    #chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+    .chat-msg .autor { color: #c9a84c; margin-right: 5px; }
+    .chat-msg .texto { color: rgba(255,255,255,0.65); }
+    .chat-msg.sistema .texto { color: rgba(255,255,255,0.25); font-style: italic; }
+    #chat-input-row { display: flex; }
+    #chat-input { flex: 1; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 0 9px; padding: 8px 10px; color: #e8e4d8; font-family: "DM Mono", monospace; font-size: 11px; outline: none; }
+    #chat-input::placeholder { color: rgba(255,255,255,0.18); }
+    #chat-input:focus { border-color: rgba(201,168,76,0.3); }
+    #chat-send { background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.25); border-top: none; border-left: none; border-radius: 0 0 9px 0; padding: 8px 12px; color: #c9a84c; cursor: pointer; font-size: 12px; }
+    #chat-send:hover { background: rgba(201,168,76,0.25); }
+
+    /* ECRÃ DE ENTRADA */
+    #enter-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.93); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; cursor: pointer; }
+    #enter-screen h2 { font-family: "Playfair Display", serif; font-size: 26px; color: #c9a84c; }
+    #enter-screen p { font-size: 12px; color: rgba(255,255,255,0.35); letter-spacing: 0.12em; }
+    .enter-btn { background: #c9a84c; color: #0a0a0f; border: none; border-radius: 9px; padding: 13px 34px; font-family: "DM Mono", monospace; font-size: 12px; letter-spacing: 0.1em; cursor: pointer; transition: opacity 0.2s; }
+    .enter-btn:hover { opacity: 0.85; }
+
+    #remote-video-hidden { display: none; }
+  </style>
+</head>
+<body>
+<div id="canvas-container"></div>
+<video id="remote-video-hidden" autoplay playsinline muted></video>
+<audio id="remote-audio" autoplay></audio>
+
+<!-- Ecrã entrada -->
+<div id="enter-screen">
+  <div style="font-size:44px">🎬</div>
+  <h2 id="welcome-name">Cinema</h2>
+  <p>CLICA PARA ENTRAR NA SALA</p>
+  <button class="enter-btn" id="enter-btn">ENTRAR</button>
+  <p style="font-size:11px;margin-top:4px">WASD mover · Rato olhar · C soltar rato</p>
+</div>
+
+<!-- HUD -->
+<div id="hud" style="display:none">
+  <div id="crosshair"></div>
+
+  <div id="hud-info">
+    <div class="hud-badge" id="hud-username">👤 ...</div>
+    <div class="hud-badge" id="hud-sala">🎬 ...</div>
+    <div class="hud-badge" id="hud-users">👥 ...</div>
+  </div>
+
+  <div id="room-actions">
+    <button class="room-action-btn" id="copy-invite-btn" type="button">Copiar convite</button>
+    <a class="room-action-btn" id="open-lounge-link" href="cinema.html">Abrir lounge</a>
+  </div>
+
+  <div id="cursor-toggle" onclick="toggleCursor()">🖱 SOLTAR RATO [C]</div>
+
+  <div id="hud-controls">
+    <span>WASD</span> — mover<br>
+    <span>RATO</span> — olhar<br>
+    <span>C</span> — soltar/prender rato<br>
+    <span>ENTER</span> — chat
+  </div>
+
+  <!-- Screenshare -->
+  <div id="ss-panel">
+    <button class="ss-btn" id="btn-partilhar" onclick="iniciarPartilha()">📡 Partilhar ecrã</button>
+    <button class="ss-btn" onclick="pararPartilha()">✕ Parar partilha</button>
+    <div id="ss-status">Sem partilha ativa</div>
+  </div>
+
+  <!-- Painel admin -->
+  <div id="admin-btn" onclick="toggleAdmin()">⚙ CENÁRIO</div>
+  <div id="admin-panel">
+    <h3>⚙ Painel de Cenário</h3>
+
+    <div class="admin-section">
+      <div class="admin-label">Período do dia</div>
+      <div class="preset-row">
+        <button class="preset-btn active" onclick="aplicarPreset(this,'noite')">🌙 Noite</button>
+        <button class="preset-btn" onclick="aplicarPreset(this,'pordosol')">🌅 Pôr do Sol</button>
+        <button class="preset-btn" onclick="aplicarPreset(this,'manha')">☀️ Manhã</button>
+        <button class="preset-btn" onclick="aplicarPreset(this,'cinema')">🎬 Cinema</button>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <div class="admin-label">Ajuste fino</div>
+      <div class="slider-row">
+        <label>Ambient</label>
+        <input type="range" min="0" max="100" value="20" oninput="ajustarLuz('ambient',this.value)" />
+        <span class="slider-val" id="val-ambient">20</span>
+      </div>
+      <div class="slider-row">
+        <label>Luz tela</label>
+        <input type="range" min="0" max="100" value="40" oninput="ajustarLuz('tela',this.value)" />
+        <span class="slider-val" id="val-tela">40</span>
+      </div>
+      <div class="slider-row">
+        <label>Corredor</label>
+        <input type="range" min="0" max="100" value="30" oninput="ajustarLuz('corredor',this.value)" />
+        <span class="slider-val" id="val-corredor">30</span>
+      </div>
+      <div class="slider-row">
+        <label>Fog</label>
+        <input type="range" min="0" max="100" value="30" oninput="ajustarLuz('fog',this.value)" />
+        <span class="slider-val" id="val-fog">30</span>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <div class="admin-label">Cor das cadeiras</div>
+      <div class="preset-row">
+        <button class="preset-btn active" onclick="corCadeiras(this,0x3d0505)">🔴 Vermelho</button>
+        <button class="preset-btn" onclick="corCadeiras(this,0x0a2240)">🔵 Azul</button>
+        <button class="preset-btn" onclick="corCadeiras(this,0x0a2a0a)">🟢 Verde</button>
+        <button class="preset-btn" onclick="corCadeiras(this,0x1a1a1a)">⚫ Preto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat -->
+  <div id="chat-panel">
+    <div id="chat-messages">
+      <div class="chat-msg sistema"><span class="texto">Bem-vindo ao cinema! 🎬</span></div>
+    </div>
+    <div id="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Escreve e prime Enter..." />
+      <button id="chat-send" onclick="enviarMsg()">➤</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+import {
+  buildRoomUrl,
+  copyText,
+  get,
+  getSessionFromUrl,
+  initFirebase,
+  onValue,
+  push,
+  ref,
+  registerPresence,
+  remove,
+  set,
+} from "./js/cinema-shared.js";
+
+const { db } = initFirebase();
+const { username, salaId } = getSessionFromUrl();
+
+if (!username) {
+  window.location.href = `index.html?sala=${encodeURIComponent(salaId)}`;
+  throw new Error("Nome em falta");
+}
+
+document.getElementById("welcome-name").textContent = `Olá, ${username}!`;
+document.getElementById("hud-username").textContent = `👤 ${username}`;
+document.getElementById("hud-sala").textContent     = `🎬 Sala: ${salaId}`;
+document.getElementById("open-lounge-link").href    = buildRoomUrl("cinema.html", username, salaId);
+
+const inviteUrl = new URL(`cinema.html?sala=${encodeURIComponent(salaId)}`, window.location.href).href;
+document.getElementById("copy-invite-btn").addEventListener("click", async () => {
+  await copyText(inviteUrl);
+  setStatus("🔗 Convite copiado");
+});
+
+const usersRef = ref(db, `salas/${salaId}/users/${username}`);
+const chatRef  = ref(db, `salas/${salaId}/chat`);
+await registerPresence(db, salaId, username, { modo: "3d" });
+
+const remoteUsersState = new Map();
+
+onValue(ref(db, `salas/${salaId}/users`), snap => {
+  const u = snap.val() || {};
+  const n = Object.keys(u).filter(k => u[k].online).length;
+  document.getElementById("hud-users").textContent = `👥 ${n} pessoa${n!==1?"s":""}`;
+  Object.entries(u).forEach(([name, data]) => remoteUsersState.set(name, data));
+  [...remoteUsersState.keys()].forEach(name => {
+    if (!u[name]) remoteUsersState.delete(name);
+  });
+  syncRemoteAvatars();
+});
+
+onValue(chatRef, snap => {
+  const msgs = snap.val() || {};
+  const c = document.getElementById("chat-messages");
+  c.innerHTML = "";
+  Object.values(msgs).sort((a,b) => a.ts-b.ts).forEach(m => {
+    const d = document.createElement("div");
+    d.className = "chat-msg";
+    d.innerHTML = `<span class="autor">${m.autor}:</span><span class="texto">${m.texto}</span>`;
+    c.appendChild(d);
+  });
+  c.scrollTop = c.scrollHeight;
+});
+
+window.enviarMsg = () => {
+  const el = document.getElementById("chat-input");
+  const t  = el.value.trim(); if (!t) return;
+  push(chatRef, { autor: username, texto: t, ts: Date.now() });
+  el.value = "";
+};
+document.getElementById("chat-input").addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter") window.enviarMsg();
+});
+
+// ══════════════════════════════════════
+// WebRTC — com papéis claros
+// caller = quem partilha o ecrã
+// callee = quem recebe
+// ══════════════════════════════════════
+let localStream = null;
+let pc          = null;
+let myRole      = null; // "caller" ou "callee"
+let signalUnsubs = [];
+let remoteStream = null;
+let localAudioEnabled = false;
+
+// ID único por tab — resolve conflito de dois tabs no mesmo browser
+const tabId = Math.random().toString(36).substring(2, 10);
+
+const rtcCfg = { iceServers: [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" }
+]};
+
+const webrtcBase = `salas/${salaId}/webrtc`;
+
+function setStatus(msg) {
+  document.getElementById("ss-status").textContent = msg;
+  console.log("[screenshare]", msg);
+}
+
+function updateAudioStatus() {
+  const suffix = localAudioEnabled
+    ? " · áudio do sistema ativo"
+    : " · sem áudio do sistema";
+  const current = document.getElementById("ss-status").textContent;
+  if (current && !current.includes("áudio do sistema") && !current.includes("sem áudio")) {
+    document.getElementById("ss-status").textContent = `${current}${suffix}`;
+  }
+}
+
+function detachSignalListeners() {
+  signalUnsubs.forEach(unsub => unsub());
+  signalUnsubs = [];
+}
+
+function resetScreenTexture() {
+  if (window.telaMesh && window.waitingTex) {
+    window.telaMesh.material.map = window.waitingTex;
+    window.telaMesh.material.needsUpdate = true;
+  }
+}
+
+function cleanupPeer({ clearRemote = false } = {}) {
+  detachSignalListeners();
+
+  if (pc) {
+    pc.onicecandidate = null;
+    pc.ontrack = null;
+    pc.onconnectionstatechange = null;
+    pc.close();
+    pc = null;
+  }
+
+  if (clearRemote) {
+    remoteStream?.getTracks().forEach(track => track.stop());
+    remoteStream = null;
+    const vid = document.getElementById("remote-video-hidden");
+    const audio = document.getElementById("remote-audio");
+    vid.pause();
+    vid.srcObject = null;
+    audio.pause();
+    audio.srcObject = null;
+    resetScreenTexture();
+  }
+}
+
+async function getDisplayStream() {
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    throw new Error("Partilha de ecrã não suportada neste browser");
+  }
+
+  try {
+    return await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 30 },
+      audio: true,
+    });
+  } catch (error) {
+    const shouldRetryWithoutAudio =
+      error?.name === "OverconstrainedError" ||
+      error?.name === "NotReadableError" ||
+      error?.name === "TypeError";
+
+    if (!shouldRetryWithoutAudio) {
+      throw error;
+    }
+
+    return navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 30 },
+      audio: false,
+    });
+  }
+}
+
+function aplicarVideoNaTela(videoEl) {
+  videoEl.muted = true;
+  videoEl.play().then(() => {
+    const t = new THREE.VideoTexture(videoEl);
+    t.minFilter = THREE.LinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    window.screenTexture = t;
+    if (window.telaMesh) {
+      window.telaMesh.material.map = t;
+      window.telaMesh.material.needsUpdate = true;
+    }
+  }).catch(e => setStatus("❌ " + e.message));
+}
+
+function aplicarAudioRemoto(stream) {
+  const audioEl = document.getElementById("remote-audio");
+  const hasAudio = stream.getAudioTracks().length > 0;
+  audioEl.srcObject = hasAudio ? stream : null;
+  audioEl.muted = false;
+  if (!hasAudio) return;
+  audioEl.play().catch(() => {
+    setStatus("🔈 Vídeo remoto ligado, mas o browser bloqueou autoplay do áudio");
+  });
+}
+
+// ── CALLER: partilhar ecrã ──
+window.iniciarPartilha = async () => {
+  if (myRole === "caller" && localStream) {
+    setStatus("📡 Já estás a transmitir");
+    return;
+  }
+
+  // Limpar sessão anterior
+  cleanupPeer({ clearRemote: false });
+  await remove(ref(db, webrtcBase));
+  await new Promise(r => setTimeout(r, 200));
+
+  // Soltar rato
+  if (document.pointerLockElement) document.exitPointerLock();
+  await new Promise(r => setTimeout(r, 150));
+
+  try {
+    localStream = await getDisplayStream();
+  } catch(e) {
+    setStatus("❌ " + e.message); return;
+  }
+
+  localAudioEnabled = localStream.getAudioTracks().length > 0;
+
+  myRole = "caller";
+  document.getElementById("btn-partilhar").classList.add("active");
+  setStatus("📡 A iniciar transmissão...");
+
+  const localPreviewVideo = document.getElementById("remote-video-hidden");
+  localPreviewVideo.srcObject = localStream;
+  aplicarVideoNaTela(localPreviewVideo);
+  setStatus("📡 Ecrã capturado. A ligar à sala...");
+  updateAudioStatus();
+
+  localStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+    window.pararPartilha();
+  }, { once: true });
+
+  pc = new RTCPeerConnection(rtcCfg);
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  // Envia ICE candidates
+  pc.onicecandidate = e => {
+    if (e.candidate) {
+      push(ref(db, `${webrtcBase}/caller_ice`), JSON.stringify(e.candidate));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "connected") setStatus("✅ Ligado!");
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      setStatus("❌ Ligação perdida");
+      cleanupPeer({ clearRemote: false });
+      myRole = null;
+    }
+  };
+
+  // Cria offer
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  // Regista este tab como o caller
+  await set(ref(db, `${webrtcBase}/callerId`), tabId);
+  await set(ref(db, `${webrtcBase}/offer`), JSON.stringify(offer));
+  setStatus("📡 Offer enviada. À espera de resposta...");
+
+  // Ouve answer do callee
+  signalUnsubs.push(onValue(ref(db, `${webrtcBase}/answer`), async snap => {
+    if (!snap.val() || !pc || pc.remoteDescription) return;
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(snap.val())));
+    } catch(e) {
+      setStatus("❌ Erro a receber resposta");
+    }
+  }));
+
+  // Ouve ICE candidates do callee
+  signalUnsubs.push(onValue(ref(db, `${webrtcBase}/callee_ice`), async snap => {
+    if (!snap.val() || !pc) return;
+    for (const v of Object.values(snap.val())) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(v))); } catch(e) {}
+    }
+  }));
+};
+
+// ── CALLEE: receber ecrã ──
+// Ouve offer — mas só responde se não for o caller
+onValue(ref(db, `${webrtcBase}/offer`), async snap => {
+  if (!snap.val()) return;
+  if (myRole === "caller") return; // Ignora se eu sou o caller
+  if (pc) return; // Já ligado
+
+  // Verifica se este tab é o caller (pelo tabId guardado no Firebase)
+  const callerSnap = await get(ref(db, `${webrtcBase}/callerId`));
+  if (callerSnap.val() === tabId) return; // Sou o caller, ignoro
+
+  myRole = "callee";
+  setStatus("📡 A receber ecrã...");
+
+  pc = new RTCPeerConnection(rtcCfg);
+
+  pc.ontrack = e => {
+    const vid = document.getElementById("remote-video-hidden");
+    remoteStream = e.streams[0];
+    vid.srcObject = remoteStream;
+    aplicarVideoNaTela(vid);
+    aplicarAudioRemoto(remoteStream);
+    const remoteHasAudio = remoteStream.getAudioTracks().length > 0;
+    setStatus(`✅ A ver ecrã remoto${remoteHasAudio ? " com áudio" : " sem áudio"}`);
+  };
+
+  pc.onicecandidate = e => {
+    if (e.candidate) {
+      push(ref(db, `${webrtcBase}/callee_ice`), JSON.stringify(e.candidate));
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      setStatus("❌ Ligação perdida");
+      cleanupPeer({ clearRemote: true });
+      myRole = null;
+    }
+  };
+
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(snap.val())));
+    setStatus("📡 Offer recebida. A preparar resposta...");
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await set(ref(db, `${webrtcBase}/answer`), JSON.stringify(answer));
+    setStatus("📡 Resposta enviada. A ligar...");
+
+    // Ouve ICE do caller
+    signalUnsubs.push(onValue(ref(db, `${webrtcBase}/caller_ice`), async snap2 => {
+      if (!snap2.val() || !pc) return;
+      for (const v of Object.values(snap2.val())) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(v))); } catch(e) {}
+      }
+    }));
+  } catch(e) {
+    setStatus("❌ Erro: " + e.message);
+    cleanupPeer({ clearRemote: true });
+    myRole = null;
+  }
+});
+
+window.pararPartilha = async () => {
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  cleanupPeer({ clearRemote: true });
+  myRole = null;
+  localAudioEnabled = false;
+  document.getElementById("btn-partilhar").classList.remove("active");
+  setStatus("Sem partilha ativa");
+  await remove(ref(db, webrtcBase));
+  resetScreenTexture();
+};
+
+window.addEventListener("beforeunload", () => set(usersRef, { nome: username, online: false }));
+
+// ══════════════════════════════════════
+// THREE.JS
+// ══════════════════════════════════════
+const container = document.getElementById("canvas-container");
+const renderer  = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ReinhardToneMapping;
+renderer.toneMappingExposure = 0.85;
+container.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x050508);
+scene.fog = new THREE.FogExp2(0x050508, 0.03);
+
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.7, 8);
+
+const remoteAvatarRoot = new THREE.Group();
+scene.add(remoteAvatarRoot);
+const remoteAvatars = new Map();
+let lastPresenceSentAt = 0;
+let lastPresencePayload = "";
+
+function colorFromName(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = ((hash << 5) - hash) + name.charCodeAt(i);
+  return new THREE.Color().setHSL((Math.abs(hash) % 360) / 360, 0.45, 0.55);
+}
+
+function makeNameTag(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(8,8,14,0.85)";
+  ctx.strokeStyle = "rgba(201,168,76,0.6)";
+  ctx.lineWidth = 4;
+  const x = 8;
+  const y = 8;
+  const w = 240;
+  const h = 80;
+  const r = 18;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#e8e4d8";
+  ctx.font = "bold 28px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text.slice(0, 16), 128, 49);
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(1.9, 0.72, 1);
+  return sprite;
+}
+
+function createAvatar(name) {
+  const group = new THREE.Group();
+  const bodyColor = colorFromName(name);
+  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const detailMat = new THREE.MeshLambertMaterial({ color: 0xf4e7c5 });
+  const shadowMat = new THREE.MeshLambertMaterial({ color: 0x1b1513 });
+
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.9, 16), bodyMat);
+  torso.position.y = 1.05;
+  const capTop = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), bodyMat);
+  capTop.position.y = 1.5;
+  const capBottom = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 16), bodyMat);
+  capBottom.position.y = 0.6;
+  group.add(torso, capTop, capBottom);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), detailMat);
+  head.position.y = 1.85;
+  group.add(head);
+
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 10), shadowMat);
+  const eyeR = eyeL.clone();
+  eyeL.position.set(-0.07, 1.88, 0.2);
+  eyeR.position.set(0.07, 1.88, 0.2);
+  group.add(eyeL, eyeR);
+
+  const tag = makeNameTag(name);
+  tag.position.set(0, 2.45, 0);
+  group.add(tag);
+
+  remoteAvatarRoot.add(group);
+  remoteAvatars.set(name, { group, tag });
+  return group;
+}
+
+function syncRemoteAvatars() {
+  if (!remoteAvatarRoot) return;
+
+  for (const [name, data] of remoteUsersState.entries()) {
+    if (name === username || !data?.online || data?.modo !== "3d") continue;
+    const avatar = remoteAvatars.get(name)?.group || createAvatar(name);
+    avatar.visible = true;
+    avatar.position.set(
+      Number(data.x) || 0,
+      0,
+      Number(data.z) || 0,
+    );
+    avatar.rotation.y = Number(data.yaw) || 0;
+    remoteAvatars.get(name).tag.quaternion.copy(camera.quaternion);
+  }
+
+  for (const [name, avatar] of remoteAvatars.entries()) {
+    const data = remoteUsersState.get(name);
+    if (!data?.online || data?.modo !== "3d") {
+      remoteAvatarRoot.remove(avatar.group);
+      avatar.group.traverse(obj => {
+        if (obj.material?.map) obj.material.map.dispose?.();
+        obj.material?.dispose?.();
+        obj.geometry?.dispose?.();
+      });
+      remoteAvatars.delete(name);
+    }
+  }
+}
+
+async function publishPresence(force = false) {
+  const payload = {
+    nome: username,
+    online: true,
+    modo: "3d",
+    x: Number(camera.position.x.toFixed(2)),
+    z: Number(camera.position.z.toFixed(2)),
+    yaw: Number(yaw.toFixed(3)),
+    ts: Date.now(),
+  };
+
+  const serialized = JSON.stringify(payload);
+  const now = Date.now();
+  if (!force && serialized === lastPresencePayload && now - lastPresenceSentAt < 1000) return;
+  if (!force && now - lastPresenceSentAt < 120) return;
+
+  lastPresencePayload = serialized;
+  lastPresenceSentAt = now;
+  try {
+    await set(usersRef, payload);
+  } catch (error) {
+    console.warn("presence sync falhou", error);
+  }
+}
+
+// ── Materiais ──
+const matPiso    = new THREE.MeshLambertMaterial({ color: 0x1a1410 });
+const matTeto    = new THREE.MeshLambertMaterial({ color: 0x0d0d12 });
+const matParede  = new THREE.MeshLambertMaterial({ color: 0x13111a });
+const matCortina = new THREE.MeshLambertMaterial({ color: 0x3d0505 });
+const matCadeira = new THREE.MeshLambertMaterial({ color: 0x3d0505 });
+const matMetal   = new THREE.MeshLambertMaterial({ color: 0x252020 });
+
+// ── Sala ──
+const piso = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matPiso);
+piso.rotation.x = -Math.PI/2; piso.receiveShadow = true; scene.add(piso);
+
+const teto = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matTeto);
+teto.rotation.x = Math.PI/2; teto.position.y = 6; scene.add(teto);
+
+function box(w,h,d,x,y,z,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y,z); m.receiveShadow=true; scene.add(m); return m; }
+box(20,6,0.3, 0,3,-15,matParede);
+box(20,6,0.3, 0,3,10,matParede);
+box(0.3,6,30,-10,3,-2.5,matParede);
+box(0.3,6,30, 10,3,-2.5,matParede);
+
+// Cortinas
+function cortina(x){
+  box(1.5,5.5,0.2, x,3.5,-13.5,matCortina);
+  box(0.3,5.5,1.5, x+(x>0?0.6:-0.6),3.5,-13.2,matCortina);
+}
+cortina(-7); cortina(7);
+
+// ── Tela ──
+box(12.4,6.9,0.15, 0,4,-14.5,matMetal);
+
+const canvas2d = document.createElement("canvas");
+canvas2d.width=1280; canvas2d.height=720;
+const ctx2 = canvas2d.getContext("2d");
+ctx2.fillStyle="#0a0a14"; ctx2.fillRect(0,0,1280,720);
+ctx2.fillStyle="rgba(201,168,76,0.12)"; ctx2.font="bold 52px serif"; ctx2.textAlign="center";
+ctx2.fillText("🎬",640,300);
+ctx2.fillStyle="rgba(255,255,255,0.18)"; ctx2.font="26px monospace";
+ctx2.fillText("A aguardar partilha de ecrã...",640,380);
+ctx2.fillStyle="rgba(255,255,255,0.08)"; ctx2.font="16px monospace";
+ctx2.fillText("Clica em  📡 Partilhar ecrã  no canto inferior esquerdo",640,430);
+const waitingTex = new THREE.CanvasTexture(canvas2d);
+window.waitingTex = waitingTex;
+
+const telaMat = new THREE.MeshBasicMaterial({ map: waitingTex });
+const tela = new THREE.Mesh(new THREE.PlaneGeometry(12,6.5), telaMat);
+tela.position.set(0,4,-14.3); scene.add(tela);
+window.telaMesh = tela;
+
+// ── Cadeiras ──
+const cadeiraMeshes = [];
+function cadeira(x,z){
+  const g = new THREE.Group();
+  const ass = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.1,0.6),matCadeira); ass.position.y=0.5; g.add(ass);
+  const enc = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.1),matCadeira); enc.position.set(0,0.9,-0.25); g.add(enc);
+  [-0.28,0.28].forEach(px=>[-0.22,0.22].forEach(pz=>{
+    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.5),matMetal); p.position.set(px,0.25,pz); g.add(p);
+  }));
+  g.position.set(x,0,z); scene.add(g);
+  cadeiraMeshes.push({ass,enc});
+}
+[2,3.5,5,6.5,8].forEach(z=>[-4.5,-2.7,-0.9,0.9,2.7,4.5].forEach(x=>cadeira(x,z)));
+
+// ── Luzes ──
+const luzAmbient = new THREE.AmbientLight(0x1a1520, 0.8);
+scene.add(luzAmbient);
+
+const luzTela = new THREE.PointLight(0x4466cc, 0.6, 22);
+luzTela.position.set(0,4,-12); scene.add(luzTela);
+
+const luzesCorreidor = [];
+const luzCorridorColor = 0xc9a84c;
+[-8,-4,0,4,8].forEach(x => {
+  const l = new THREE.PointLight(luzCorridorColor, 0.3, 5);
+  l.position.set(x,0.2,5); scene.add(l);
+  const esf = new THREE.Mesh(new THREE.SphereGeometry(0.06), new THREE.MeshBasicMaterial({color:luzCorridorColor}));
+  esf.position.copy(l.position); scene.add(esf);
+  luzesCorreidor.push(l);
+});
+
+const luzDir = new THREE.DirectionalLight(0xffffff, 0.25);
+luzDir.position.set(0,8,5); luzDir.castShadow=true; scene.add(luzDir);
+
+// ── PRESETS de cenário ──
+const presets = {
+  noite:    { bg:0x050508, fog:0x050508, fogD:0.03, ambient:0.8,  ambColor:0x1a1520, telaI:0.6,  telaC:0x4466cc, corrI:0.3, corrC:0xc9a84c, parC:0x13111a, pisoC:0x1a1410 },
+  pordosol: { bg:0x1a0d05, fog:0x1a0d05, fogD:0.02, ambient:1.2,  ambColor:0x3d1a0a, telaI:0.2,  telaC:0xff6622, corrI:0.6, corrC:0xff9944, parC:0x2a1508, pisoC:0x2a1a0a },
+  manha:    { bg:0x0d1520, fog:0x0d1520, fogD:0.02, ambient:2.0,  ambColor:0x2a3a5a, telaI:0.1,  telaC:0x88aaff, corrI:0.4, corrC:0xffeebb, parC:0x1a2030, pisoC:0x1a1e28 },
+  cinema:   { bg:0x080008, fog:0x080008, fogD:0.035,ambient:0.5,  ambColor:0x0d0010, telaI:1.0,  telaC:0x6633cc, corrI:0.15,corrC:0xaa44ff, parC:0x0d0014, pisoC:0x100010 },
+};
+
+let currentPreset = "noite";
+
+window.aplicarPreset = (btn, nome) => {
+  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  currentPreset = nome;
+  const p = presets[nome];
+  scene.background = new THREE.Color(p.bg);
+  scene.fog.color  = new THREE.Color(p.fog);
+  scene.fog.density = p.fogD;
+  luzAmbient.intensity = p.ambient;
+  luzAmbient.color.set(p.ambColor);
+  luzTela.intensity = p.telaI;
+  luzTela.color.set(p.telaC);
+  luzesCorreidor.forEach(l => { l.intensity = p.corrI; l.color.set(p.corrC); });
+  matParede.color.set(p.parC);
+  matPiso.color.set(p.pisoC);
+  // Atualiza sliders
+  document.querySelector("[oninput*=ambient]").value = Math.round(p.ambient/3*100);
+  document.querySelector("[oninput*=tela]").value    = Math.round(p.telaI/1.5*100);
+  document.querySelector("[oninput*=corredor]").value= Math.round(p.corrI/0.8*100);
+  document.getElementById("val-ambient").textContent  = Math.round(p.ambient/3*100);
+  document.getElementById("val-tela").textContent     = Math.round(p.telaI/1.5*100);
+  document.getElementById("val-corredor").textContent = Math.round(p.corrI/0.8*100);
+};
+
+window.ajustarLuz = (tipo, val) => {
+  const v = val/100;
+  document.getElementById("val-"+tipo).textContent = val;
+  if (tipo === "ambient")  luzAmbient.intensity = v*3;
+  if (tipo === "tela")     luzTela.intensity    = v*1.5;
+  if (tipo === "corredor") luzesCorreidor.forEach(l => l.intensity = v*0.8);
+  if (tipo === "fog")      { scene.fog.density = v*0.08; document.getElementById("val-fog").textContent = val; }
+};
+
+window.corCadeiras = (btn, cor) => {
+  document.querySelectorAll(".preset-btn").forEach(b => { if(b.onclick && b.onclick.toString().includes("corCadeiras")) b.classList.remove("active"); });
+  btn.classList.add("active");
+  matCadeira.color.set(cor);
+  matCortina.color.set(cor);
+};
+
+window.toggleAdmin = () => {
+  document.getElementById("admin-panel").classList.toggle("open");
+};
+
+// ── Movimento primeira pessoa ──
+const keys = { w:false, a:false, s:false, d:false };
+let yaw=0, pitch=0, pointerLocked=false;
+
+function toggleCursor() {
+  if (pointerLocked) document.exitPointerLock();
+  else renderer.domElement.requestPointerLock();
+}
+window.toggleCursor = toggleCursor;
+
+document.getElementById("enter-btn").addEventListener("click", () => {
+  window._entrou = true;
+  renderer.domElement.requestPointerLock();
+});
+
+document.addEventListener("pointerlockchange", () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+  const btn = document.getElementById("cursor-toggle");
+  if (pointerLocked) {
+    document.getElementById("enter-screen").style.display = "none";
+    document.getElementById("hud").style.display = "block";
+    btn.textContent = "🖱 SOLTAR RATO [C]";
+    btn.classList.remove("solto");
+  } else if (window._entrou) {
+    btn.textContent = "🖱 PRENDER RATO [C]";
+    btn.classList.add("solto");
+  } else {
+    document.getElementById("enter-screen").style.display = "flex";
+    document.getElementById("hud").style.display = "none";
+  }
+});
+
+document.addEventListener("mousemove", e => {
+  if (!pointerLocked) return;
+  yaw   -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch  = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, pitch));
+});
+
+document.addEventListener("keydown", e => {
+  if ((e.key==="c"||e.key==="C") && document.activeElement !== document.getElementById("chat-input")) {
+    toggleCursor(); return;
+  }
+  if (!pointerLocked) return;
+  if (e.key==="w"||e.key==="W"||e.key==="ArrowUp")    keys.w=true;
+  if (e.key==="a"||e.key==="A"||e.key==="ArrowLeft")  keys.a=true;
+  if (e.key==="s"||e.key==="S"||e.key==="ArrowDown")  keys.s=true;
+  if (e.key==="d"||e.key==="D"||e.key==="ArrowRight") keys.d=true;
+});
+document.addEventListener("keyup", e => {
+  if (e.key==="w"||e.key==="W"||e.key==="ArrowUp")    keys.w=false;
+  if (e.key==="a"||e.key==="A"||e.key==="ArrowLeft")  keys.a=false;
+  if (e.key==="s"||e.key==="S"||e.key==="ArrowDown")  keys.s=false;
+  if (e.key==="d"||e.key==="D"||e.key==="ArrowRight") keys.d=false;
+});
+
+publishPresence(true);
+
+// ── Render loop ──
+const clock = new THREE.Clock();
+const dir   = new THREE.Vector3();
+
+(function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (pointerLocked) {
+    camera.rotation.order = "YXZ";
+    camera.rotation.y = yaw;
+    camera.rotation.x = pitch;
+    dir.set(keys.a?-1:keys.d?1:0, 0, keys.w?-1:keys.s?1:0)
+       .normalize().multiplyScalar(4*dt)
+       .applyEuler(new THREE.Euler(0,yaw,0));
+    camera.position.x = Math.max(-9,  Math.min(9,  camera.position.x+dir.x));
+    camera.position.z = Math.max(-12, Math.min(9,  camera.position.z+dir.z));
+    camera.position.y = 1.7;
+  }
+  publishPresence();
+  remoteAvatars.forEach(({ tag }) => tag.quaternion.copy(camera.quaternion));
+  const vid = document.getElementById("remote-video-hidden");
+  if (window.screenTexture && vid.readyState >= 2 && !vid.paused) window.screenTexture.needsUpdate = true;
+  renderer.render(scene, camera);
+})();
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
