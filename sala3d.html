@@ -274,8 +274,6 @@ document.getElementById("chat-input").addEventListener("keydown", e => {
 let localDisplayStream = null;
 let localMicStream = null;
 let localSendStream = null;
-let localAudioContext = null;
-let localAudioDestination = null;
 let pc          = null;
 let myRole      = null; // "sharer" ou "viewer"
 let signalUnsubs = [];
@@ -353,14 +351,6 @@ function cleanupPeer({ clearRemote = false } = {}) {
   }
 }
 
-function clearLocalAudioGraph() {
-  localAudioDestination = null;
-  if (localAudioContext) {
-    localAudioContext.close().catch(() => {});
-    localAudioContext = null;
-  }
-}
-
 function stopStream(stream) {
   stream?.getTracks().forEach(track => track.stop());
 }
@@ -418,32 +408,12 @@ async function buildOutgoingStream(displayStream, micStream) {
   if (!flags.system && !flags.mic) {
     return { stream: outgoing, flags };
   }
-
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) {
-    if (flags.system) displayStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
-    else if (flags.mic) micStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
-    return { stream: outgoing, flags };
-  }
-
-  localAudioContext = new AudioCtx();
-  if (localAudioContext.state === "suspended") {
-    await localAudioContext.resume().catch(() => {});
-  }
-  localAudioDestination = localAudioContext.createMediaStreamDestination();
-
   if (flags.system) {
-    const systemSource = localAudioContext.createMediaStreamSource(new MediaStream(displayStream.getAudioTracks()));
-    systemSource.connect(localAudioDestination);
+    displayStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
   }
-
   if (flags.mic) {
-    const micSource = localAudioContext.createMediaStreamSource(new MediaStream(micStream.getAudioTracks()));
-    micSource.connect(localAudioDestination);
+    micStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
   }
-
-  const mixedTrack = localAudioDestination.stream.getAudioTracks()[0];
-  if (mixedTrack) outgoing.addTrack(mixedTrack);
 
   return { stream: outgoing, flags };
 }
@@ -467,7 +437,10 @@ function aplicarAudioRemoto(stream) {
   const hasAudio = stream.getAudioTracks().length > 0;
   audioEl.srcObject = hasAudio ? stream : null;
   audioEl.muted = false;
-  if (!hasAudio) return;
+  if (!hasAudio) {
+    setStatus("🔇 Stream remota sem faixa de áudio");
+    return;
+  }
   audioEl.play().catch(() => {
     setStatus("🔈 Vídeo remoto ligado, mas o browser bloqueou autoplay do áudio");
   });
@@ -482,7 +455,6 @@ async function stopSharingSession({ releaseClaim = true, reason = "Sem partilha 
   localDisplayStream = null;
   localMicStream = null;
   localSendStream = null;
-  clearLocalAudioGraph();
 
   cleanupPeer({ clearRemote: true });
   myRole = null;
@@ -512,7 +484,17 @@ async function startViewerForSession(meta) {
 
   pc.ontrack = (e) => {
     const vid = document.getElementById("remote-video-hidden");
-    remoteStream = e.streams[0];
+    if (!remoteStream) remoteStream = new MediaStream();
+    const incomingStream = e.streams[0];
+    if (incomingStream) {
+      incomingStream.getTracks().forEach((track) => {
+        if (!remoteStream.getTracks().some(existing => existing.id === track.id)) {
+          remoteStream.addTrack(track);
+        }
+      });
+    } else if (e.track && !remoteStream.getTracks().some(existing => existing.id === e.track.id)) {
+      remoteStream.addTrack(e.track);
+    }
     vid.srcObject = remoteStream;
     aplicarVideoNaTela(vid);
     aplicarAudioRemoto(remoteStream);
@@ -584,6 +566,11 @@ window.iniciarPartilha = async () => {
   const { stream, flags } = await buildOutgoingStream(localDisplayStream, localMicStream);
   localSendStream = stream;
   localAudioFlags = flags;
+  console.log("[screenshare] local audio tracks", {
+    system: localDisplayStream.getAudioTracks().length,
+    mic: localMicStream?.getAudioTracks().length || 0,
+    outgoing: localSendStream.getAudioTracks().length,
+  });
 
   const sessionId = makeSessionId();
   localSessionId = sessionId;
@@ -789,8 +776,8 @@ function createAvatar(name) {
 
   const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 10), shadowMat);
   const eyeR = eyeL.clone();
-  eyeL.position.set(-0.07, 1.88, 0.2);
-  eyeR.position.set(0.07, 1.88, 0.2);
+  eyeL.position.set(-0.07, 1.88, -0.2);
+  eyeR.position.set(0.07, 1.88, -0.2);
   group.add(eyeL, eyeR);
 
   const tag = makeNameTag(name);
@@ -886,7 +873,7 @@ function cortina(x){
 cortina(-7); cortina(7);
 
 // ── Tela ──
-box(12.4,6.9,0.15, 0,4,-14.5,matMetal);
+box(13,7.6,0.15, 0,3.75,-14.5,matMetal);
 
 const canvas2d = document.createElement("canvas");
 canvas2d.width=1280; canvas2d.height=720;
@@ -902,8 +889,8 @@ const waitingTex = new THREE.CanvasTexture(canvas2d);
 window.waitingTex = waitingTex;
 
 const telaMat = new THREE.MeshBasicMaterial({ map: waitingTex });
-const tela = new THREE.Mesh(new THREE.PlaneGeometry(12,6.5), telaMat);
-tela.position.set(0,4,-14.3); scene.add(tela);
+const tela = new THREE.Mesh(new THREE.PlaneGeometry(12.4,6.98), telaMat);
+tela.position.set(0,3.75,-14.3); scene.add(tela);
 window.telaMesh = tela;
 
 // ── Cadeiras ──
