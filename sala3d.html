@@ -58,6 +58,16 @@
     .ss-btn:hover { border-color: rgba(201,168,76,0.4); color: #c9a84c; }
     .ss-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.08); }
     #ss-status { font-size: 11px; color: rgba(255,255,255,0.3); padding: 0 3px; letter-spacing: 0.05em; }
+    #stream-menu-btn { position: absolute; bottom: 16px; left: 190px; background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.28); backdrop-filter: blur(8px); border-radius: 7px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: #c9a84c; cursor: pointer; pointer-events: all; letter-spacing: 0.08em; transition: all 0.2s; }
+    #stream-menu-btn:hover { background: rgba(201,168,76,0.12); }
+    #stream-panel { position: absolute; bottom: 54px; left: 190px; width: 320px; background: rgba(8,8,14,0.92); border: 1px solid rgba(201,168,76,0.25); backdrop-filter: blur(16px); border-radius: 14px; padding: 18px 20px; display: none; pointer-events: all; }
+    #stream-panel.open { display: block; }
+    #stream-panel h3 { font-family: "Playfair Display", serif; color: #c9a84c; font-size: 15px; margin-bottom: 14px; letter-spacing: 0.06em; }
+    .stream-meta { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.6; margin-bottom: 14px; }
+    .stream-toggle-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .stream-toggle-btn { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 8px 12px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.68); cursor: pointer; transition: all 0.2s; }
+    .stream-toggle-btn:hover { border-color: rgba(201,168,76,0.45); color: #c9a84c; }
+    .stream-toggle-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.1); }
 
     /* CHAT */
     #chat-panel { position: absolute; bottom: 16px; right: 16px; width: 260px; pointer-events: all; }
@@ -95,7 +105,7 @@
   <h2 id="welcome-name">Cinema</h2>
   <p>CLICA PARA ENTRAR NA SALA</p>
   <button class="enter-btn" id="enter-btn">ENTRAR</button>
-  <p style="font-size:11px;margin-top:4px">WASD mover · Rato olhar · C soltar rato</p>
+  <p style="font-size:11px;margin-top:4px">WASD mover · Rato olhar · E sentar · C soltar rato</p>
 </div>
 
 <!-- HUD -->
@@ -118,6 +128,7 @@
   <div id="hud-controls">
     <span>WASD</span> — mover<br>
     <span>RATO</span> — olhar<br>
+    <span>E</span> — sentar/levantar<br>
     <span>C</span> — soltar/prender rato<br>
     <span>ENTER</span> — chat
   </div>
@@ -127,6 +138,32 @@
     <button class="ss-btn" id="btn-partilhar" onclick="iniciarPartilha()">📡 Partilhar ecrã</button>
     <button class="ss-btn" onclick="pararPartilha()">✕ Parar partilha</button>
     <div id="ss-status">Sem partilha ativa</div>
+  </div>
+
+  <button id="stream-menu-btn" onclick="toggleStreamPanel()">🔊 TRANSMISSÃO</button>
+  <div id="stream-panel">
+    <h3>🔊 Controlo da Transmissão</h3>
+    <div class="stream-meta" id="stream-meta">Sem stream remota ativa.</div>
+    <div class="stream-toggle-row">
+      <button class="stream-toggle-btn active" id="remote-audio-toggle" onclick="toggleRemoteMute()">Cortar som</button>
+      <button class="stream-toggle-btn" id="projector-fit-toggle" onclick="toggleProjectorContain()">Projetor completo</button>
+    </div>
+    <div class="admin-section">
+      <div class="admin-label">Som remoto</div>
+      <div class="slider-row">
+        <label>Volume</label>
+        <input type="range" min="0" max="100" value="100" id="remote-volume-slider" oninput="setRemoteVolume(this.value)" />
+        <span class="slider-val" id="val-remote-volume">100</span>
+      </div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-label">Imagem do projetor</div>
+      <div class="slider-row">
+        <label>Brilho</label>
+        <input type="range" min="20" max="160" value="100" id="projector-brightness-slider" oninput="setProjectorBrightness(this.value)" />
+        <span class="slider-val" id="val-projector-brightness">100</span>
+      </div>
+    </div>
   </div>
 
   <!-- Painel admin -->
@@ -272,16 +309,18 @@ document.getElementById("chat-input").addEventListener("keydown", e => {
 // uma partilha ativa por sala
 // ══════════════════════════════════════
 let localDisplayStream = null;
-let localMicStream = null;
 let localSendStream = null;
 let pc          = null;
 let myRole      = null; // "sharer" ou "viewer"
 let signalUnsubs = [];
 let remoteStream = null;
-let localAudioFlags = { system: false, mic: false };
+let localAudioFlags = { system: false };
 let localSessionId = null;
 let viewingSessionId = null;
 let activeSessionMeta = null;
+let remoteVolume = 1;
+let remoteMuted = false;
+let projectorContain = true;
 
 // ID único por tab — resolve conflito de dois tabs no mesmo browser
 const tabId = Math.random().toString(36).substring(2, 10);
@@ -309,9 +348,7 @@ function sessionRef(sessionId, path = "") {
 }
 
 function describeAudio(flags) {
-  if (flags?.system && flags?.mic) return "áudio do sistema + microfone";
   if (flags?.system) return "áudio do sistema";
-  if (flags?.mic) return "microfone";
   return "sem áudio";
 }
 
@@ -343,11 +380,13 @@ function cleanupPeer({ clearRemote = false } = {}) {
     remoteStream = null;
     const vid = document.getElementById("remote-video-hidden");
     const audio = document.getElementById("remote-audio");
+    vid._textureFrameCleanup?.();
     vid.pause();
     vid.srcObject = null;
     audio.pause();
     audio.srcObject = null;
     resetScreenTexture();
+    updateStreamPanelMeta();
   }
 }
 
@@ -362,8 +401,17 @@ async function getDisplayStream() {
 
   try {
     return await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: 30 },
-      audio: true,
+      video: {
+        frameRate: 30,
+      },
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        suppressLocalAudioPlayback: false,
+      },
+      selfBrowserSurface: "exclude",
+      surfaceSwitching: "include",
+      systemAudio: "include",
     });
   } catch (error) {
     const shouldRetryWithoutAudio =
@@ -382,83 +430,138 @@ async function getDisplayStream() {
   }
 }
 
-async function getMicStream() {
-  if (!navigator.mediaDevices?.getUserMedia) return null;
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function buildOutgoingStream(displayStream, micStream) {
+async function buildOutgoingStream(displayStream) {
   const outgoing = new MediaStream();
   displayStream.getVideoTracks().forEach(track => outgoing.addTrack(track));
 
   const flags = {
     system: displayStream.getAudioTracks().length > 0,
-    mic: micStream ? micStream.getAudioTracks().length > 0 : false,
   };
 
-  if (!flags.system && !flags.mic) {
+  if (!flags.system) {
     return { stream: outgoing, flags };
   }
-  if (flags.system) {
-    displayStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
-  }
-  if (flags.mic) {
-    micStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
-  }
+  displayStream.getAudioTracks().forEach(track => outgoing.addTrack(track));
 
   return { stream: outgoing, flags };
+}
+
+function bindVideoTexture(videoEl) {
+  const refresh = () => {
+    if (window.screenTexture) {
+      window.screenTexture.needsUpdate = true;
+    }
+  };
+
+  if (videoEl._textureFrameCleanup) {
+    videoEl._textureFrameCleanup();
+  }
+
+  let rafId = null;
+  const supportsFrameCallback = "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+  const startFramePump = () => {
+    if (!supportsFrameCallback || rafId !== null) return;
+    const pump = () => {
+      refresh();
+      if (!videoEl.paused && !videoEl.ended) {
+        rafId = videoEl.requestVideoFrameCallback(pump);
+      } else {
+        rafId = null;
+      }
+    };
+    rafId = videoEl.requestVideoFrameCallback(pump);
+  };
+
+  const onLoaded = () => refresh();
+  const onPlaying = () => {
+    refresh();
+    startFramePump();
+  };
+  const onResize = () => refresh();
+  const onTimeUpdate = () => refresh();
+
+  videoEl.addEventListener("loadeddata", onLoaded);
+  videoEl.addEventListener("playing", onPlaying);
+  videoEl.addEventListener("resize", onResize);
+  videoEl.addEventListener("timeupdate", onTimeUpdate);
+
+  startFramePump();
+
+  videoEl._textureFrameCleanup = () => {
+    videoEl.removeEventListener("loadeddata", onLoaded);
+    videoEl.removeEventListener("playing", onPlaying);
+    videoEl.removeEventListener("resize", onResize);
+    videoEl.removeEventListener("timeupdate", onTimeUpdate);
+    if (rafId !== null && videoEl.cancelVideoFrameCallback) {
+      videoEl.cancelVideoFrameCallback(rafId);
+    }
+  };
 }
 
 function aplicarVideoNaTela(videoEl) {
   videoEl.muted = true;
   videoEl.play().then(() => {
+    if (window.screenTexture) {
+      window.screenTexture.dispose?.();
+    }
     const t = new THREE.VideoTexture(videoEl);
     t.minFilter = THREE.LinearFilter;
     t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = false;
+    t.colorSpace = THREE.SRGBColorSpace;
     window.screenTexture = t;
     if (window.telaMesh) {
       window.telaMesh.material.map = t;
+      window.telaMesh.material.toneMapped = false;
+      updateProjectorTextureMode();
       window.telaMesh.material.needsUpdate = true;
     }
+    bindVideoTexture(videoEl);
   }).catch(e => setStatus("❌ " + e.message));
+}
+
+function ensureRemotePlayback() {
+  const videoEl = document.getElementById("remote-video-hidden");
+  const audioEl = document.getElementById("remote-audio");
+
+  if (videoEl.srcObject) {
+    videoEl.play().catch(() => {});
+  }
+  if (audioEl.srcObject) {
+    audioEl.play().catch(() => {});
+  }
 }
 
 function aplicarAudioRemoto(stream) {
   const audioEl = document.getElementById("remote-audio");
   const hasAudio = stream.getAudioTracks().length > 0;
   audioEl.srcObject = hasAudio ? stream : null;
-  audioEl.muted = false;
+  audioEl.autoplay = true;
+  audioEl.playsInline = true;
+  audioEl.volume = remoteVolume;
+  audioEl.muted = remoteMuted;
   if (!hasAudio) {
     setStatus("🔇 Stream remota sem faixa de áudio");
+    updateStreamPanelMeta();
     return;
   }
   audioEl.play().catch(() => {
     setStatus("🔈 Vídeo remoto ligado, mas o browser bloqueou autoplay do áudio");
   });
+  updateStreamPanelMeta();
 }
 
 async function stopSharingSession({ releaseClaim = true, reason = "Sem partilha ativa" } = {}) {
   const previousSessionId = localSessionId;
 
   stopStream(localDisplayStream);
-  stopStream(localMicStream);
   stopStream(localSendStream);
   localDisplayStream = null;
-  localMicStream = null;
   localSendStream = null;
 
   cleanupPeer({ clearRemote: true });
   myRole = null;
-  localAudioFlags = { system: false, mic: false };
+  localAudioFlags = { system: false };
   localSessionId = null;
   document.getElementById("btn-partilhar").classList.remove("active");
 
@@ -562,13 +665,11 @@ window.iniciarPartilha = async () => {
     return;
   }
 
-  localMicStream = await getMicStream();
-  const { stream, flags } = await buildOutgoingStream(localDisplayStream, localMicStream);
+  const { stream, flags } = await buildOutgoingStream(localDisplayStream);
   localSendStream = stream;
   localAudioFlags = flags;
   console.log("[screenshare] local audio tracks", {
     system: localDisplayStream.getAudioTracks().length,
-    mic: localMicStream?.getAudioTracks().length || 0,
     outgoing: localSendStream.getAudioTracks().length,
   });
 
@@ -582,6 +683,7 @@ window.iniciarPartilha = async () => {
   const localPreviewVideo = document.getElementById("remote-video-hidden");
   localPreviewVideo.srcObject = localDisplayStream;
   aplicarVideoNaTela(localPreviewVideo);
+  updateStreamPanelMeta();
   setStatus(`📡 Ecrã capturado · ${describeAudio(flags)}`);
 
   localDisplayStream.getVideoTracks()[0]?.addEventListener("ended", () => {
@@ -664,6 +766,7 @@ onValue(activeSessionRef, async (snap) => {
       viewingSessionId = null;
       setStatus("Sem partilha ativa");
     }
+    updateStreamPanelMeta();
     return;
   }
 
@@ -680,7 +783,88 @@ onValue(activeSessionRef, async (snap) => {
   if (previousId !== next.id || viewingSessionId !== next.id || myRole !== "viewer") {
     await startViewerForSession(next);
   }
+  updateStreamPanelMeta();
 });
+
+function updateProjectorTextureMode() {
+  if (!window.telaMesh?.material?.map?.image?.videoWidth) return;
+  const video = window.telaMesh.material.map.image;
+  const texture = window.telaMesh.material.map;
+  texture.center.set(0.5, 0.5);
+
+  if (projectorContain) {
+    texture.repeat.set(1, 1);
+    texture.offset.set(0, 0);
+    return;
+  }
+
+  const screenAspect = 12.4 / 6.98;
+  const videoAspect = video.videoWidth / video.videoHeight;
+  if (videoAspect > screenAspect) {
+    const repeatX = screenAspect / videoAspect;
+    texture.repeat.set(repeatX, 1);
+    texture.offset.set((1 - repeatX) / 2, 0);
+  } else {
+    const repeatY = videoAspect / screenAspect;
+    texture.repeat.set(1, repeatY);
+    texture.offset.set(0, (1 - repeatY) / 2);
+  }
+}
+
+function updateStreamPanelMeta() {
+  const meta = document.getElementById("stream-meta");
+  const audioEl = document.getElementById("remote-audio");
+  const audioReady = !!audioEl.srcObject && audioEl.srcObject.getAudioTracks().length > 0;
+
+  if (myRole === "sharer" && localDisplayStream) {
+    meta.textContent = `A transmitir ${describeAudio(localAudioFlags)}. Para o som do vídeo funcionar, escolhe um separador/janela com a opção de áudio ativa ao partilhar.`;
+    return;
+  }
+
+  if (viewingSessionId && activeSessionMeta?.owner) {
+    meta.textContent = `A ouvir ${activeSessionMeta.owner}. Volume atual: ${Math.round(remoteVolume * 100)}%. ${audioReady ? (remoteMuted ? "Som remoto em mute." : "Som remoto ativo.") : "A stream remota não trouxe áudio."}`;
+    return;
+  }
+
+  meta.textContent = "Sem stream remota ativa.";
+}
+
+window.toggleStreamPanel = () => {
+  document.getElementById("stream-panel").classList.toggle("open");
+  updateStreamPanelMeta();
+};
+
+window.setRemoteVolume = (value) => {
+  remoteVolume = Math.max(0, Math.min(1, Number(value) / 100));
+  const audioEl = document.getElementById("remote-audio");
+  audioEl.volume = remoteVolume;
+  document.getElementById("val-remote-volume").textContent = value;
+  updateStreamPanelMeta();
+};
+
+window.toggleRemoteMute = () => {
+  remoteMuted = !remoteMuted;
+  const btn = document.getElementById("remote-audio-toggle");
+  const audioEl = document.getElementById("remote-audio");
+  audioEl.muted = remoteMuted;
+  btn.textContent = remoteMuted ? "Ativar som" : "Cortar som";
+  btn.classList.toggle("active", !remoteMuted);
+  updateStreamPanelMeta();
+};
+
+window.toggleProjectorContain = () => {
+  projectorContain = !projectorContain;
+  const btn = document.getElementById("projector-fit-toggle");
+  btn.textContent = projectorContain ? "Projetor completo" : "Preencher tela";
+  btn.classList.toggle("active", !projectorContain);
+  updateProjectorTextureMode();
+};
+
+window.setProjectorBrightness = (value) => {
+  const numeric = Math.max(20, Math.min(160, Number(value)));
+  telaMat.color.setScalar(numeric / 100);
+  document.getElementById("val-projector-brightness").textContent = String(numeric);
+};
 
 window.addEventListener("beforeunload", () => set(usersRef, { nome: username, online: false }));
 
@@ -857,13 +1041,13 @@ const piso = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matPiso);
 piso.rotation.x = -Math.PI/2; piso.receiveShadow = true; scene.add(piso);
 
 const teto = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matTeto);
-teto.rotation.x = Math.PI/2; teto.position.y = 6; scene.add(teto);
+teto.rotation.x = Math.PI/2; teto.position.y = 8; scene.add(teto);
 
 function box(w,h,d,x,y,z,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y,z); m.receiveShadow=true; scene.add(m); return m; }
-box(20,6,0.3, 0,3,-15,matParede);
-box(20,6,0.3, 0,3,10,matParede);
-box(0.3,6,30,-10,3,-2.5,matParede);
-box(0.3,6,30, 10,3,-2.5,matParede);
+box(20,8,0.3, 0,4,-15,matParede);
+box(20,8,0.3, 0,4,10,matParede);
+box(0.3,8,30,-10,4,-2.5,matParede);
+box(0.3,8,30, 10,4,-2.5,matParede);
 
 // Cortinas
 function cortina(x){
@@ -890,20 +1074,25 @@ window.waitingTex = waitingTex;
 
 const telaMat = new THREE.MeshBasicMaterial({ map: waitingTex });
 const tela = new THREE.Mesh(new THREE.PlaneGeometry(12.4,6.98), telaMat);
-tela.position.set(0,3.75,-14.3); scene.add(tela);
+tela.position.set(0,3.35,-14.3); scene.add(tela);
 window.telaMesh = tela;
 
 // ── Cadeiras ──
 const cadeiraMeshes = [];
+const seatSpots = [];
 function cadeira(x,z){
   const g = new THREE.Group();
   const ass = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.1,0.6),matCadeira); ass.position.y=0.5; g.add(ass);
-  const enc = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.1),matCadeira); enc.position.set(0,0.9,-0.25); g.add(enc);
+  const enc = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.1),matCadeira); enc.position.set(0,0.9,0.25); g.add(enc);
   [-0.28,0.28].forEach(px=>[-0.22,0.22].forEach(pz=>{
     const p=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.5),matMetal); p.position.set(px,0.25,pz); g.add(p);
   }));
   g.position.set(x,0,z); scene.add(g);
   cadeiraMeshes.push({ass,enc});
+  seatSpots.push({
+    sit: new THREE.Vector3(x, 1.16, z + 0.02),
+    stand: new THREE.Vector3(x, 1.7, z + 1.1),
+  });
 }
 [2,3.5,5,6.5,8].forEach(z=>[-4.5,-2.7,-0.9,0.9,2.7,4.5].forEach(x=>cadeira(x,z)));
 
@@ -984,6 +1173,7 @@ window.toggleAdmin = () => {
 // ── Movimento primeira pessoa ──
 const keys = { w:false, a:false, s:false, d:false };
 let yaw=0, pitch=0, pointerLocked=false;
+let seatedSeat = null;
 
 function toggleCursor() {
   if (pointerLocked) document.exitPointerLock();
@@ -1024,6 +1214,10 @@ document.addEventListener("keydown", e => {
   if ((e.key==="c"||e.key==="C") && document.activeElement !== document.getElementById("chat-input")) {
     toggleCursor(); return;
   }
+  if ((e.key==="e"||e.key==="E") && document.activeElement !== document.getElementById("chat-input")) {
+    toggleSeat();
+    return;
+  }
   if (!pointerLocked) return;
   if (e.key==="w"||e.key==="W"||e.key==="ArrowUp")    keys.w=true;
   if (e.key==="a"||e.key==="A"||e.key==="ArrowLeft")  keys.a=true;
@@ -1039,6 +1233,53 @@ document.addEventListener("keyup", e => {
 
 publishPresence(true);
 
+function getNearestSeat() {
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  seatSpots.forEach((seat) => {
+    const distance = camera.position.distanceTo(seat.sit);
+    if (distance < nearestDistance) {
+      nearest = seat;
+      nearestDistance = distance;
+    }
+  });
+
+  return nearestDistance <= 1.35 ? nearest : null;
+}
+
+function toggleSeat() {
+  if (seatedSeat) {
+    camera.position.copy(seatedSeat.stand);
+    seatedSeat = null;
+    setStatus("🪑 Levantaste-te da cadeira");
+    return;
+  }
+
+  const seat = getNearestSeat();
+  if (!seat) {
+    setStatus("🪑 Aproxima-te de uma cadeira e prime E");
+    return;
+  }
+
+  seatedSeat = seat;
+  camera.position.copy(seat.sit);
+  yaw = 0;
+  pitch = 0;
+  camera.rotation.set(0, 0, 0);
+  setStatus("🪑 Sentado. Prime E para te levantares");
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    ensureRemotePlayback();
+  }
+});
+
+document.getElementById("enter-screen").addEventListener("click", () => {
+  ensureRemotePlayback();
+});
+
 // ── Render loop ──
 const clock = new THREE.Clock();
 const dir   = new THREE.Vector3();
@@ -1050,17 +1291,20 @@ const dir   = new THREE.Vector3();
     camera.rotation.order = "YXZ";
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
-    dir.set(keys.a?-1:keys.d?1:0, 0, keys.w?-1:keys.s?1:0)
-       .normalize().multiplyScalar(4*dt)
-       .applyEuler(new THREE.Euler(0,yaw,0));
-    camera.position.x = Math.max(-9,  Math.min(9,  camera.position.x+dir.x));
-    camera.position.z = Math.max(-12, Math.min(9,  camera.position.z+dir.z));
+    if (!seatedSeat) {
+      dir.set(keys.a?-1:keys.d?1:0, 0, keys.w?-1:keys.s?1:0)
+         .normalize().multiplyScalar(4*dt)
+         .applyEuler(new THREE.Euler(0,yaw,0));
+      camera.position.x = Math.max(-9,  Math.min(9,  camera.position.x+dir.x));
+      camera.position.z = Math.max(-12, Math.min(9,  camera.position.z+dir.z));
+    }
     camera.position.y = 1.7;
+  }
+  if (seatedSeat) {
+    camera.position.copy(seatedSeat.sit);
   }
   publishPresence();
   remoteAvatars.forEach(({ tag }) => tag.quaternion.copy(camera.quaternion));
-  const vid = document.getElementById("remote-video-hidden");
-  if (window.screenTexture && vid.readyState >= 2 && !vid.paused) window.screenTexture.needsUpdate = true;
   renderer.render(scene, camera);
 })();
 
