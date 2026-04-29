@@ -5,94 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cinema 3D</title>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Playfair+Display:wght@700&amp;display=swap" rel="stylesheet">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #000; overflow: hidden; font-family: "DM Mono", monospace; color: #e8e4d8; }
-    #canvas-container { position: fixed; inset: 0; }
-    canvas { display: block; }
-
-    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-
-    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 16px; height: 16px; }
-    #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,0.5); border-radius: 2px; }
-    #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
-    #crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
-
-    #hud-info { position: absolute; top: 16px; left: 16px; display: flex; flex-direction: column; gap: 5px; }
-    .hud-badge { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 7px; padding: 5px 12px; font-size: 12px; letter-spacing: 0.06em; color: #c9a84c; }
-
-    #cursor-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.4); backdrop-filter: blur(8px); border-radius: 7px; padding: 6px 16px; font-size: 11px; letter-spacing: 0.1em; color: #c9a84c; cursor: pointer; pointer-events: all; transition: all 0.2s; user-select: none; }
-    #cursor-toggle:hover { background: rgba(201,168,76,0.15); }
-    #cursor-toggle.solto { border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.35); }
-
-    #hud-controls { position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px); border-radius: 9px; padding: 10px 14px; font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.9; letter-spacing: 0.05em; }
-    #hud-controls span { color: #c9a84c; }
-
-    #room-actions { position: absolute; top: 16px; right: 220px; display: flex; gap: 8px; pointer-events: all; }
-    .room-action-btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 999px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.7); cursor: pointer; letter-spacing: 0.06em; text-decoration: none; transition: all 0.2s; }
-    .room-action-btn:hover { border-color: rgba(201,168,76,0.45); color: #c9a84c; }
-
-    /* PAINEL ADMIN */
-    #admin-btn { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.3); backdrop-filter: blur(8px); border-radius: 7px; padding: 6px 18px; font-size: 11px; color: #c9a84c; cursor: pointer; pointer-events: all; letter-spacing: 0.1em; transition: all 0.2s; }
-    #admin-btn:hover { background: rgba(201,168,76,0.12); }
-
-    #admin-panel { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); background: rgba(8,8,14,0.92); border: 1px solid rgba(201,168,76,0.25); backdrop-filter: blur(16px); border-radius: 14px; padding: 20px 24px; width: 420px; display: none; pointer-events: all; }
-    #admin-panel.open { display: block; }
-    #admin-panel h3 { font-family: "Playfair Display", serif; color: #c9a84c; font-size: 15px; margin-bottom: 16px; letter-spacing: 0.06em; }
-
-    .admin-section { margin-bottom: 16px; }
-    .admin-label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.35); margin-bottom: 8px; }
-    .preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .preset-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 7px 14px; font-family: "DM Mono", monospace; font-size: 12px; color: rgba(255,255,255,0.6); cursor: pointer; transition: all 0.2s; letter-spacing: 0.04em; }
-    .preset-btn:hover { border-color: rgba(201,168,76,0.5); color: #c9a84c; }
-    .preset-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.1); }
-
-    .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .slider-row label { font-size: 11px; color: rgba(255,255,255,0.4); width: 90px; letter-spacing: 0.04em; }
-    .slider-row input[type=range] { flex: 1; accent-color: #c9a84c; }
-    .slider-val { font-size: 11px; color: #c9a84c; width: 30px; text-align: right; }
-
-    /* SCREENSHARE */
-    #ss-panel { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 6px; pointer-events: all; }
-    .ss-btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); border-radius: 7px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.6); cursor: pointer; letter-spacing: 0.06em; transition: all 0.2s; }
-    .ss-btn:hover { border-color: rgba(201,168,76,0.4); color: #c9a84c; }
-    .ss-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.08); }
-    #ss-status { font-size: 11px; color: rgba(255,255,255,0.3); padding: 0 3px; letter-spacing: 0.05em; }
-    #stream-menu-btn { position: absolute; bottom: 16px; left: 190px; background: rgba(0,0,0,0.6); border: 1px solid rgba(201,168,76,0.28); backdrop-filter: blur(8px); border-radius: 7px; padding: 8px 14px; font-family: "DM Mono", monospace; font-size: 11px; color: #c9a84c; cursor: pointer; pointer-events: all; letter-spacing: 0.08em; transition: all 0.2s; }
-    #stream-menu-btn:hover { background: rgba(201,168,76,0.12); }
-    #stream-panel { position: absolute; bottom: 54px; left: 190px; width: 320px; background: rgba(8,8,14,0.92); border: 1px solid rgba(201,168,76,0.25); backdrop-filter: blur(16px); border-radius: 14px; padding: 18px 20px; display: none; pointer-events: all; }
-    #stream-panel.open { display: block; }
-    #stream-panel h3 { font-family: "Playfair Display", serif; color: #c9a84c; font-size: 15px; margin-bottom: 14px; letter-spacing: 0.06em; }
-    .stream-meta { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.6; margin-bottom: 14px; }
-    .stream-toggle-row { display: flex; gap: 8px; margin-bottom: 14px; }
-    .stream-toggle-btn { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 8px 12px; font-family: "DM Mono", monospace; font-size: 11px; color: rgba(255,255,255,0.68); cursor: pointer; transition: all 0.2s; }
-    .stream-toggle-btn:hover { border-color: rgba(201,168,76,0.45); color: #c9a84c; }
-    .stream-toggle-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,0.1); }
-
-    /* CHAT */
-    #chat-panel { position: absolute; bottom: 16px; right: 16px; width: 260px; pointer-events: all; }
-    #chat-messages { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.07); backdrop-filter: blur(8px); border-radius: 9px 9px 0 0; padding: 10px; height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
-    #chat-messages::-webkit-scrollbar { width: 2px; }
-    #chat-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
-    .chat-msg .autor { color: #c9a84c; margin-right: 5px; }
-    .chat-msg .texto { color: rgba(255,255,255,0.65); }
-    .chat-msg.sistema .texto { color: rgba(255,255,255,0.25); font-style: italic; }
-    #chat-input-row { display: flex; }
-    #chat-input { flex: 1; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 0 9px; padding: 8px 10px; color: #e8e4d8; font-family: "DM Mono", monospace; font-size: 11px; outline: none; }
-    #chat-input::placeholder { color: rgba(255,255,255,0.18); }
-    #chat-input:focus { border-color: rgba(201,168,76,0.3); }
-    #chat-send { background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.25); border-top: none; border-left: none; border-radius: 0 0 9px 0; padding: 8px 12px; color: #c9a84c; cursor: pointer; font-size: 12px; }
-    #chat-send:hover { background: rgba(201,168,76,0.25); }
-
-    /* ECRÃ DE ENTRADA */
-    #enter-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.93); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 100; cursor: pointer; }
-    #enter-screen h2 { font-family: "Playfair Display", serif; font-size: 26px; color: #c9a84c; }
-    #enter-screen p { font-size: 12px; color: rgba(255,255,255,0.35); letter-spacing: 0.12em; }
-    .enter-btn { background: #c9a84c; color: #0a0a0f; border: none; border-radius: 9px; padding: 13px 34px; font-family: "DM Mono", monospace; font-size: 12px; letter-spacing: 0.1em; cursor: pointer; transition: opacity 0.2s; }
-    .enter-btn:hover { opacity: 0.85; }
-
-    #remote-video-hidden { display: none; }
-  </style>
+  <link rel="stylesheet" href="sala3d.css">
 </head>
 <body>
 <div id="canvas-container"></div>
@@ -172,12 +85,20 @@
     <h3>⚙ Painel de Cenário</h3>
 
     <div class="admin-section">
+      <div class="admin-label">Ambiente</div>
+      <div class="preset-row">
+        <button class="preset-btn active" data-ambiente="cinema" onclick="setAmbiente(this,'cinema')">🎬 Cinema</button>
+        <button class="preset-btn" data-ambiente="quarto" onclick="setAmbiente(this,'quarto')">🛋 Quarto</button>
+      </div>
+    </div>
+
+    <div class="admin-section">
       <div class="admin-label">Período do dia</div>
       <div class="preset-row">
-        <button class="preset-btn active" onclick="aplicarPreset(this,'noite')">🌙 Noite</button>
-        <button class="preset-btn" onclick="aplicarPreset(this,'pordosol')">🌅 Pôr do Sol</button>
-        <button class="preset-btn" onclick="aplicarPreset(this,'manha')">☀️ Manhã</button>
-        <button class="preset-btn" onclick="aplicarPreset(this,'cinema')">🎬 Cinema</button>
+        <button class="preset-btn active" data-preset="noite" onclick="aplicarPreset(this,'noite')">🌙 Noite</button>
+        <button class="preset-btn" data-preset="pordosol" onclick="aplicarPreset(this,'pordosol')">🌅 Pôr do Sol</button>
+        <button class="preset-btn" data-preset="manha" onclick="aplicarPreset(this,'manha')">☀️ Manhã</button>
+        <button class="preset-btn" data-preset="cinema" onclick="aplicarPreset(this,'cinema')">🎬 Cinema</button>
       </div>
     </div>
 
@@ -1035,6 +956,25 @@ const matParede  = new THREE.MeshLambertMaterial({ color: 0x13111a });
 const matCortina = new THREE.MeshLambertMaterial({ color: 0x3d0505 });
 const matCadeira = new THREE.MeshLambertMaterial({ color: 0x3d0505 });
 const matMetal   = new THREE.MeshLambertMaterial({ color: 0x252020 });
+const matVeludo  = new THREE.MeshLambertMaterial({ color: 0x4a0b0b });
+const matMadeira = new THREE.MeshLambertMaterial({ color: 0x2a170e });
+const matCobertor = new THREE.MeshLambertMaterial({ color: 0xb28f67 });
+const matTecidoClaro = new THREE.MeshLambertMaterial({ color: 0xd8cab3 });
+const matTapete = new THREE.MeshLambertMaterial({ color: 0x6b4b38 });
+const matPlanta = new THREE.MeshLambertMaterial({ color: 0x456b41 });
+const matAbajur = new THREE.MeshLambertMaterial({ color: 0xd7b77a });
+const matQuadro = new THREE.MeshLambertMaterial({ color: 0x5f473b });
+let currentAmbiente = "cinema";
+let activeSeatSpots = [];
+const cinemaSeatSpots = [];
+const cozySeatSpots = [];
+const cinemaObjects = [];
+const cozyObjects = [];
+
+function addSceneMesh(mesh, target = scene) {
+  target.add(mesh);
+  return mesh;
+}
 
 // ── Sala ──
 const piso = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matPiso);
@@ -1043,21 +983,32 @@ piso.rotation.x = -Math.PI/2; piso.receiveShadow = true; scene.add(piso);
 const teto = new THREE.Mesh(new THREE.PlaneGeometry(20, 30), matTeto);
 teto.rotation.x = Math.PI/2; teto.position.y = 8; scene.add(teto);
 
-function box(w,h,d,x,y,z,mat){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y,z); m.receiveShadow=true; scene.add(m); return m; }
+function box(w,h,d,x,y,z,mat,target=scene){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y,z); m.receiveShadow=true; return addSceneMesh(m, target); }
 box(20,8,0.3, 0,4,-15,matParede);
 box(20,8,0.3, 0,4,10,matParede);
 box(0.3,8,30,-10,4,-2.5,matParede);
 box(0.3,8,30, 10,4,-2.5,matParede);
 
+const cinemaRoomGroup = new THREE.Group();
+const cozyRoomGroup = new THREE.Group();
+scene.add(cinemaRoomGroup);
+scene.add(cozyRoomGroup);
+
 // Cortinas
 function cortina(x){
-  box(1.5,5.5,0.2, x,3.5,-13.5,matCortina);
-  box(0.3,5.5,1.5, x+(x>0?0.6:-0.6),3.5,-13.2,matCortina);
+  cinemaObjects.push(
+    box(1.5,5.5,0.2, x,3.5,-13.5,matCortina,cinemaRoomGroup),
+    box(0.3,5.5,1.5, x+(x>0?0.6:-0.6),3.5,-13.2,matCortina,cinemaRoomGroup),
+  );
 }
 cortina(-7); cortina(7);
 
 // ── Tela ──
-box(13,7.6,0.15, 0,3.75,-14.5,matMetal);
+cinemaObjects.push(
+  box(13,7.6,0.15, 0,3.75,-14.5,matMetal,cinemaRoomGroup),
+  box(14.8,0.42,1.4, 0,0.22,-12.9,matMadeira,cinemaRoomGroup),
+  box(14.8,0.22,1.8, 0,0.08,-11.7,matMadeira,cinemaRoomGroup),
+);
 
 const canvas2d = document.createElement("canvas");
 canvas2d.width=1280; canvas2d.height=720;
@@ -1079,22 +1030,149 @@ window.telaMesh = tela;
 
 // ── Cadeiras ──
 const cadeiraMeshes = [];
-const seatSpots = [];
-function cadeira(x,z){
+const rowPlatforms = [
+  { z: -2.35, width: 14.6, depth: 1.8, height: 0.22 },
+  { z: -0.4, width: 15.0, depth: 1.9, height: 0.42 },
+  { z: 1.6, width: 15.4, depth: 2.0, height: 0.68 },
+  { z: 3.7, width: 15.8, depth: 2.05, height: 0.98 },
+  { z: 5.95, width: 16.2, depth: 2.15, height: 1.32 },
+];
+
+rowPlatforms.forEach((platform) => {
+  cinemaObjects.push(box(platform.width, platform.height, platform.depth, 0, platform.height / 2, platform.z, matMadeira, cinemaRoomGroup));
+});
+
+function cadeira(x, z, rowIndex){
   const g = new THREE.Group();
-  const ass = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.1,0.6),matCadeira); ass.position.y=0.5; g.add(ass);
-  const enc = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.8,0.1),matCadeira); enc.position.set(0,0.9,0.25); g.add(enc);
-  [-0.28,0.28].forEach(px=>[-0.22,0.22].forEach(pz=>{
-    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.5),matMetal); p.position.set(px,0.25,pz); g.add(p);
-  }));
-  g.position.set(x,0,z); scene.add(g);
-  cadeiraMeshes.push({ass,enc});
-  seatSpots.push({
-    sit: new THREE.Vector3(x, 1.16, z + 0.02),
-    stand: new THREE.Vector3(x, 1.7, z + 1.1),
+  const rowLift = 0.12 + rowIndex * 0.24;
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.16, 0.88), matMadeira);
+  base.position.y = 0.24;
+  g.add(base);
+
+  const ass = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.22, 0.68), matCadeira);
+  ass.position.y = 0.56;
+  g.add(ass);
+
+  const almofada = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.09, 0.52), matVeludo);
+  almofada.position.set(0, 0.66, -0.02);
+  g.add(almofada);
+
+  const enc = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.98, 0.18), matCadeira);
+  enc.position.set(0, 1.08, 0.29);
+  g.add(enc);
+
+  const lumbar = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.36, 0.12), matVeludo);
+  lumbar.position.set(0, 1.02, 0.14);
+  g.add(lumbar);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.18, 0.16), matVeludo);
+  head.position.set(0, 1.48, 0.25);
+  g.add(head);
+
+  [-0.56, 0.56].forEach((armX) => {
+    const suporte = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.52, 0.62), matMetal);
+    suporte.position.set(armX * 0.55, 0.56, 0.03);
+    g.add(suporte);
+
+    const apoio = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.72), matVeludo);
+    apoio.position.set(armX * 0.55, 0.82, 0.03);
+    g.add(apoio);
+  });
+
+  [-0.26, 0.26].forEach((legX) => {
+    const frente = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.5, 10), matMetal);
+    frente.position.set(legX, 0.24, -0.18);
+    g.add(frente);
+
+    const tras = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.5, 10), matMetal);
+    tras.position.set(legX, 0.24, 0.24);
+    g.add(tras);
+  });
+
+  g.position.set(x, rowLift, z);
+  g.rotation.x = THREE.MathUtils.degToRad(-2);
+  cinemaRoomGroup.add(g);
+  cadeiraMeshes.push({ ass, enc, almofada, lumbar, head });
+  cinemaObjects.push(g);
+  cinemaSeatSpots.push({
+    sit: new THREE.Vector3(x, 1.22 + rowLift, z - 0.08),
+    stand: new THREE.Vector3(x, 1.7 + rowLift, z + 1.08),
   });
 }
-[2,3.5,5,6.5,8].forEach(z=>[-4.5,-2.7,-0.9,0.9,2.7,4.5].forEach(x=>cadeira(x,z)));
+[
+  { z: -2.3, xs: [-4.2, -2.52, -0.84, 0.84, 2.52, 4.2] },
+  { z: -0.28, xs: [-4.5, -2.7, -0.9, 0.9, 2.7, 4.5] },
+  { z: 1.78, xs: [-4.8, -2.88, -0.96, 0.96, 2.88, 4.8] },
+  { z: 3.92, xs: [-5.1, -3.06, -1.02, 1.02, 3.06, 5.1] },
+  { z: 6.2, xs: [-5.4, -3.24, -1.08, 1.08, 3.24, 5.4] },
+].forEach((row, rowIndex) => row.xs.forEach((x) => cadeira(x, row.z, rowIndex)));
+
+function addCozyDecor() {
+  const rug = box(9.8, 0.08, 8.4, 0, 0.05, 0.8, matTapete, cozyRoomGroup);
+  cozyObjects.push(rug);
+
+  const bedBase = box(5.8, 0.5, 4.4, 0, 0.34, 4.1, matMadeira, cozyRoomGroup);
+  const mattress = box(5.4, 0.38, 4.0, 0, 0.78, 4.1, matTecidoClaro, cozyRoomGroup);
+  const blanket = box(5.1, 0.18, 2.65, 0, 1.02, 3.65, matCobertor, cozyRoomGroup);
+  const pillows = [
+    box(1.1, 0.2, 0.7, -1.2, 1.05, 5.45, matTecidoClaro, cozyRoomGroup),
+    box(1.1, 0.2, 0.7, 0, 1.05, 5.45, matTecidoClaro, cozyRoomGroup),
+    box(1.1, 0.2, 0.7, 1.2, 1.05, 5.45, matTecidoClaro, cozyRoomGroup),
+  ];
+  const headboard = box(5.5, 1.25, 0.24, 0, 1.05, 6.1, matVeludo, cozyRoomGroup);
+  cozyObjects.push(bedBase, mattress, blanket, headboard, ...pillows);
+
+  const sofaBase = box(4.2, 0.55, 1.5, 0, 0.45, -1.15, matCadeira, cozyRoomGroup);
+  const sofaBack = box(4.2, 1.05, 0.24, 0, 1.1, -0.45, matVeludo, cozyRoomGroup);
+  const sofaSeat = box(3.9, 0.16, 1.26, 0, 0.78, -1.18, matCobertor, cozyRoomGroup);
+  const sofaArmL = box(0.34, 0.78, 1.42, -2.08, 0.88, -1.12, matVeludo, cozyRoomGroup);
+  const sofaArmR = box(0.34, 0.78, 1.42, 2.08, 0.88, -1.12, matVeludo, cozyRoomGroup);
+  cozyObjects.push(sofaBase, sofaBack, sofaSeat, sofaArmL, sofaArmR);
+
+  const coffeeTable = box(2.1, 0.16, 1.2, 0, 0.36, -3.25, matMadeira, cozyRoomGroup);
+  const coffeeLegs = [
+    box(0.12, 0.52, 0.12, -0.9, 0.18, -3.68, matMetal, cozyRoomGroup),
+    box(0.12, 0.52, 0.12, 0.9, 0.18, -3.68, matMetal, cozyRoomGroup),
+    box(0.12, 0.52, 0.12, -0.9, 0.18, -2.82, matMetal, cozyRoomGroup),
+    box(0.12, 0.52, 0.12, 0.9, 0.18, -2.82, matMetal, cozyRoomGroup),
+  ];
+  cozyObjects.push(coffeeTable, ...coffeeLegs);
+
+  const sideTableL = box(0.8, 0.64, 0.8, -3.6, 0.32, 5.1, matMadeira, cozyRoomGroup);
+  const sideTableR = box(0.8, 0.64, 0.8, 3.6, 0.32, 5.1, matMadeira, cozyRoomGroup);
+  const lampBaseL = box(0.18, 0.6, 0.18, -3.6, 0.95, 5.1, matMetal, cozyRoomGroup);
+  const lampShadeL = box(0.7, 0.42, 0.7, -3.6, 1.5, 5.1, matAbajur, cozyRoomGroup);
+  const lampBaseR = box(0.18, 0.6, 0.18, 3.6, 0.95, 5.1, matMetal, cozyRoomGroup);
+  const lampShadeR = box(0.7, 0.42, 0.7, 3.6, 1.5, 5.1, matAbajur, cozyRoomGroup);
+  cozyObjects.push(sideTableL, sideTableR, lampBaseL, lampShadeL, lampBaseR, lampShadeR);
+
+  const shelf = box(4.6, 2.6, 0.4, -7.2, 1.45, -3.2, matMadeira, cozyRoomGroup);
+  const shelfBooks = [
+    box(0.28, 0.82, 0.22, -8.45, 0.9, -3.08, new THREE.MeshLambertMaterial({ color: 0x7c9b63 }), cozyRoomGroup),
+    box(0.28, 0.74, 0.22, -8.08, 0.86, -3.08, new THREE.MeshLambertMaterial({ color: 0x9b6d63 }), cozyRoomGroup),
+    box(0.28, 0.9, 0.22, -7.71, 0.94, -3.08, new THREE.MeshLambertMaterial({ color: 0x63779b }), cozyRoomGroup),
+    box(0.28, 0.7, 0.22, -7.34, 0.84, -3.08, new THREE.MeshLambertMaterial({ color: 0xb18c59 }), cozyRoomGroup),
+  ];
+  const plantPot = box(0.52, 0.44, 0.52, 7.15, 0.22, 4.9, matQuadro, cozyRoomGroup);
+  const plantLeaf1 = box(0.18, 1.1, 0.18, 7.06, 0.95, 4.9, matPlanta, cozyRoomGroup);
+  const plantLeaf2 = box(0.18, 0.9, 0.18, 7.24, 0.85, 4.9, matPlanta, cozyRoomGroup);
+  cozyObjects.push(shelf, ...shelfBooks, plantPot, plantLeaf1, plantLeaf2);
+
+  const wallArtL = box(1.6, 1.1, 0.08, 5.8, 3.4, 9.76, matQuadro, cozyRoomGroup);
+  const wallArtR = box(1.8, 1.2, 0.08, -5.4, 3.3, 9.76, matQuadro, cozyRoomGroup);
+  cozyObjects.push(wallArtL, wallArtR);
+
+  cozySeatSpots.push(
+    { sit: new THREE.Vector3(-1.15, 1.28, -1.22), stand: new THREE.Vector3(-1.15, 1.72, 0.4) },
+    { sit: new THREE.Vector3(1.15, 1.28, -1.22), stand: new THREE.Vector3(1.15, 1.72, 0.4) },
+    { sit: new THREE.Vector3(0, 1.42, 4.2), stand: new THREE.Vector3(0, 1.76, 2.55) },
+  );
+}
+
+addCozyDecor();
+cozyRoomGroup.visible = false;
+activeSeatSpots = cinemaSeatSpots;
 
 // ── Luzes ──
 const luzAmbient = new THREE.AmbientLight(0x1a1520, 0.8);
@@ -1116,6 +1194,20 @@ const luzCorridorColor = 0xc9a84c;
 const luzDir = new THREE.DirectionalLight(0xffffff, 0.25);
 luzDir.position.set(0,8,5); luzDir.castShadow=true; scene.add(luzDir);
 
+const cozyLampL = new THREE.PointLight(0xffd39b, 0.75, 9);
+cozyLampL.position.set(-3.6, 1.8, 5.1);
+scene.add(cozyLampL);
+
+const cozyLampR = new THREE.PointLight(0xffd39b, 0.75, 9);
+cozyLampR.position.set(3.6, 1.8, 5.1);
+scene.add(cozyLampR);
+
+const cozyAccent = new THREE.PointLight(0xffb46b, 0.4, 12);
+cozyAccent.position.set(0, 1.6, -1.8);
+scene.add(cozyAccent);
+
+[cozyLampL, cozyLampR, cozyAccent].forEach(light => { light.visible = false; });
+
 // ── PRESETS de cenário ──
 const presets = {
   noite:    { bg:0x050508, fog:0x050508, fogD:0.03, ambient:0.8,  ambColor:0x1a1520, telaI:0.6,  telaC:0x4466cc, corrI:0.3, corrC:0xc9a84c, parC:0x13111a, pisoC:0x1a1410 },
@@ -1126,10 +1218,46 @@ const presets = {
 
 let currentPreset = "noite";
 
+function applyAmbientStyles() {
+  const isQuarto = currentAmbiente === "quarto";
+  document.body.dataset.ambiente = currentAmbiente;
+  cinemaRoomGroup.visible = !isQuarto;
+  cozyRoomGroup.visible = isQuarto;
+  activeSeatSpots = isQuarto ? cozySeatSpots : cinemaSeatSpots;
+
+  if (isQuarto) {
+    matParede.color.set(0x372821);
+    matPiso.color.set(0x2a201a);
+    matTeto.color.set(0x241d1a);
+    matCortina.color.set(0x7a5a46);
+    luzAmbient.intensity = 1.25;
+    luzAmbient.color.set(0xffe5c8);
+    luzTela.intensity = 0.3;
+    luzTela.color.set(0xffd6a3);
+    luzesCorreidor.forEach(l => l.visible = false);
+    cozyLampL.visible = true;
+    cozyLampR.visible = true;
+    cozyAccent.visible = true;
+    scene.fog.color = new THREE.Color(0x241c19);
+    scene.fog.density = 0.018;
+    scene.background = new THREE.Color(0x1a1413);
+  } else {
+    cozyLampL.visible = false;
+    cozyLampR.visible = false;
+    cozyAccent.visible = false;
+    luzesCorreidor.forEach(l => l.visible = true);
+    const activePresetBtn = document.querySelector(".preset-btn.active[data-preset]") || document.querySelector("[data-preset]");
+    if (activePresetBtn) {
+      aplicarPreset(activePresetBtn, currentPreset);
+    }
+  }
+}
+
 window.aplicarPreset = (btn, nome) => {
-  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll("[data-preset]").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   currentPreset = nome;
+  if (currentAmbiente === "quarto") return;
   const p = presets[nome];
   scene.background = new THREE.Color(p.bg);
   scene.fog.color  = new THREE.Color(p.fog);
@@ -1150,6 +1278,19 @@ window.aplicarPreset = (btn, nome) => {
   document.getElementById("val-corredor").textContent = Math.round(p.corrI/0.8*100);
 };
 
+window.setAmbiente = (btn, ambiente) => {
+  document.querySelectorAll("[data-ambiente]").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  if (seatedSeat) {
+    camera.position.copy(seatedSeat.stand);
+    seatedSeat = null;
+  }
+  currentAmbiente = ambiente;
+  applyAmbientStyles();
+};
+
+applyAmbientStyles();
+
 window.ajustarLuz = (tipo, val) => {
   const v = val/100;
   document.getElementById("val-"+tipo).textContent = val;
@@ -1163,6 +1304,7 @@ window.corCadeiras = (btn, cor) => {
   document.querySelectorAll(".preset-btn").forEach(b => { if(b.onclick && b.onclick.toString().includes("corCadeiras")) b.classList.remove("active"); });
   btn.classList.add("active");
   matCadeira.color.set(cor);
+  matVeludo.color.set(cor).multiplyScalar(1.08);
   matCortina.color.set(cor);
 };
 
@@ -1237,7 +1379,7 @@ function getNearestSeat() {
   let nearest = null;
   let nearestDistance = Infinity;
 
-  seatSpots.forEach((seat) => {
+  activeSeatSpots.forEach((seat) => {
     const distance = camera.position.distanceTo(seat.sit);
     if (distance < nearestDistance) {
       nearest = seat;
